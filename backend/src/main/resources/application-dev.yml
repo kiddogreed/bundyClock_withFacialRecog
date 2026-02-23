@@ -2,7 +2,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/bundyclock_dev
     username: postgres
-    password: postgres
+    password: Russelle0
 
   jpa:
     show-sql: true

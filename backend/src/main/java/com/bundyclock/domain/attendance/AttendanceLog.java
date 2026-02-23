@@ -37,6 +37,7 @@ public class AttendanceLog {
     @Column(name = "confidence_score", precision = 5, scale = 4)
     private BigDecimal confidenceScore;
 
+    @Builder.Default
     @Column(nullable = false)
     private Boolean verified = false;
 

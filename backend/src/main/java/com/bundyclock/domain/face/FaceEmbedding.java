@@ -34,6 +34,7 @@ public class FaceEmbedding {
     @Column(name = "raw_image_path", length = 500)
     private String rawImagePath;
 
+    @Builder.Default
     @Column(name = "model_used", length = 100)
     private String modelUsed = "DeepFace";
 
