@@ -1,0 +1,33 @@
+# =====================
+# BundyClock .gitignore
+# =====================
+
+# ---- Backend ----
+backend/.gradle/
+backend/build/
+backend/out/
+backend/*.class
+backend/uploads/
+
+# ---- Frontend ----
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# ---- Face Recognition Service ----
+face-recognition-service/.venv/
+face-recognition-service/__pycache__/
+face-recognition-service/**/__pycache__/
+face-recognition-service/*.pyc
+face-recognition-service/.env
+face-recognition-service/data/faces/
+face-recognition-service/data/embeddings/
+
+# ---- General ----
+.DS_Store
+Thumbs.db
+*.log
+*.env
+.idea/
+.vscode/
+*.iml

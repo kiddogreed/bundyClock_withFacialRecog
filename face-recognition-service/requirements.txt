@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+deepface>=0.0.93
+numpy>=2.1.0          # 2.x has Python 3.13 pre-built wheels
+opencv-python-headless>=4.10.0.84
+pydantic==2.10.3
+pydantic-settings==2.7.0
+python-multipart==0.0.18
+httpx==0.28.1
