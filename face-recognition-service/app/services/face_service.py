@@ -75,17 +75,26 @@ def register_face(employee_id: str, image_bytes: bytes) -> dict:
             "message": "No face detected in the provided image.",
         }
 
-    # Save embedding
+    # Save embedding — accumulate all photos for this employee (improves accuracy)
     emb_path = os.path.join(settings.EMBEDDINGS_DIR, f"{employee_id}.json")
-    with open(emb_path, "w") as f:
-        json.dump({"employee_id": employee_id, "embedding": embedding}, f)
+    if os.path.exists(emb_path):
+        with open(emb_path) as f:
+            existing = json.load(f)
+        # Support both old single-embedding format and new list format
+        existing_list = existing.get("embeddings") or [existing.get("embedding")]
+        existing_list.append(embedding)
+    else:
+        existing_list = [embedding]
 
-    logger.info("Face registered for employee %s", employee_id)
+    with open(emb_path, "w") as f:
+        json.dump({"employee_id": employee_id, "embeddings": existing_list}, f)
+
+    logger.info("Face registered for employee %s (total embeddings: %d)", employee_id, len(existing_list))
     return {
         "success": True,
         "employee_id": employee_id,
         "embedding_path": emb_path,
-        "message": "Face registered successfully.",
+        "message": f"Face registered successfully. ({len(existing_list)} photo(s) stored)",
     }
 
 
@@ -109,7 +118,7 @@ def verify_face(image_bytes: bytes) -> dict:
                 "message": "No face detected in the probe image.",
             }
 
-        # Compare against all stored embeddings
+        # Compare against all stored embeddings; take best score per employee
         best_match_id: Optional[str] = None
         best_score: float = 0.0
 
@@ -117,10 +126,15 @@ def verify_face(image_bytes: bytes) -> dict:
         for emb_file in emb_dir.glob("*.json"):
             with open(emb_file) as f:
                 data = json.load(f)
-            score = _cosine_similarity(probe_embedding, data["embedding"])
-            if score > best_score:
-                best_score = score
-                best_match_id = data["employee_id"]
+            # Support both old {"embedding": [...]} and new {"embeddings": [[...],[...]]}
+            stored_embs = data.get("embeddings") or [data.get("embedding")]
+            for stored_emb in stored_embs:
+                if stored_emb is None:
+                    continue
+                score = _cosine_similarity(probe_embedding, stored_emb)
+                if score > best_score:
+                    best_score = score
+                    best_match_id = data["employee_id"]
 
         threshold = settings.CONFIDENCE_THRESHOLD
         matched = best_score >= threshold
