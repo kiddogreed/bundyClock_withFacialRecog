@@ -7,12 +7,9 @@ import api from './axiosClient'
  */
 export const timeIn = (employeeId, imageBlob = null) => {
   const formData = new FormData()
-  formData.append('employeeId', employeeId)
   if (imageBlob) formData.append('image', imageBlob, 'capture.jpg')
-  return api.post('/attendance/time-in', formData, {
-    params: { employeeId },
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+  // employeeId goes as query param (@RequestParam); do NOT override Content-Type
+  return api.post('/attendance/time-in', formData, { params: { employeeId } })
 }
 
 /**
@@ -20,12 +17,8 @@ export const timeIn = (employeeId, imageBlob = null) => {
  */
 export const timeOut = (employeeId, imageBlob = null) => {
   const formData = new FormData()
-  formData.append('employeeId', employeeId)
   if (imageBlob) formData.append('image', imageBlob, 'capture.jpg')
-  return api.post('/attendance/time-out', formData, {
-    params: { employeeId },
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+  return api.post('/attendance/time-out', formData, { params: { employeeId } })
 }
 
 /** GET /api/attendance */

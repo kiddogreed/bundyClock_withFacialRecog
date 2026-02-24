@@ -35,6 +35,7 @@ bundyclock/
 │       │   │   ├── auth/
 │       │   │   │   └── AuthController.java
 │       │   │   ├── config/
+│       │   │   │   ├── AppConfig.java          ← RestTemplate bean
 │       │   │   │   ├── CorsConfig.java
 │       │   │   │   ├── OpenApiConfig.java
 │       │   │   │   └── SecurityConfig.java
@@ -56,13 +57,13 @@ bundyclock/
 │       │   │       │   ├── AttendanceController.java
 │       │   │       │   ├── AttendanceLogRepository.java
 │       │   │       │   ├── AttendanceService.java
-│       │   │       │   └── AttendanceServiceImpl.java
+│       │   │       │   └── AttendanceServiceImpl.java ← duplicate guard
 │       │   │       └── face/
 │       │   │           ├── FaceEmbedding.java
 │       │   │           ├── FaceController.java
 │       │   │           ├── FaceEmbeddingRepository.java
 │       │   │           ├── FaceService.java
-│       │   │           ├── FaceServiceImpl.java
+│       │   │           ├── FaceServiceImpl.java        ← real HTTP calls
 │       │   │           └── FaceVerifyResult.java
 │       │   └── resources/
 │       │       ├── application.yml
@@ -71,7 +72,7 @@ bundyclock/
 │       │           └── V1__create_initial_tables.sql
 │       └── test/
 │           ├── java/.../BundyClockApplicationTests.java
-│           └── resources/application.yml
+│           └── resources/application.yml               ← H2 + app props
 │
 ├── frontend/                        ← React + Vite + MUI
 │   ├── index.html
@@ -83,26 +84,26 @@ bundyclock/
 │       ├── context/
 │       │   └── AppContext.jsx
 │       ├── api/
-│       │   ├── axiosClient.js
+│       │   ├── axiosClient.js      ← 15s default / 120s for face calls
 │       │   ├── auth.js
 │       │   ├── employees.js
 │       │   ├── attendance.js
 │       │   └── face.js
 │       ├── components/
-│       │   ├── WebcamCapture.jsx
-│       │   ├── EmployeeCard.jsx
+│       │   ├── WebcamCapture.jsx   ← autoCapture countdown mode
+│       │   ├── EmployeeCard.jsx    ← Register Face button
 │       │   └── NavigationBar.jsx
 │       └── pages/
 │           ├── Login.jsx
 │           ├── EmployeeList.jsx
 │           ├── EmployeeRegistration.jsx
-│           ├── BundyClock.jsx
+│           ├── BundyClock.jsx          ← auto face scan (no manual capture)
+│           ├── FaceRegistration.jsx    ← new: register faces per employee
 │           └── AttendanceLogs.jsx
 │
 ├── face-recognition-service/        ← Python FastAPI + DeepFace
 │   ├── run.py
 │   ├── requirements.txt
-│   ├── .env.example
 │   ├── app/
 │   │   ├── main.py
 │   │   ├── core/
@@ -112,10 +113,10 @@ bundyclock/
 │   │   ├── schemas/
 │   │   │   └── face_schemas.py
 │   │   └── services/
-│   │       └── face_service.py
+│   │       └── face_service.py     ← multi-embedding accumulation
 │   ├── data/
 │   │   ├── faces/           ← raw face images
-│   │   └── embeddings/      ← JSON embedding vectors
+│   │   └── embeddings/      ← JSON embedding vectors (one file per employee)
 │   └── tests/
 │       └── test_face_router.py
 │
@@ -130,10 +131,10 @@ bundyclock/
 |------|---------|-------|
 | Java JDK | 23 | [Adoptium](https://adoptium.net) or [Oracle](https://oracle.com/java) |
 | Gradle | 8.x | Bundled via wrapper (`./gradlew`) |
-| PostgreSQL | 15+ | `brew install postgresql` / [psql](https://www.postgresql.org/download/windows/) |
+| PostgreSQL | 15+ | [psql](https://www.postgresql.org/download/windows/) |
 | Node.js | 20 LTS | [nodejs.org](https://nodejs.org) |
 | Python | 3.10 – 3.12 | [python.org](https://python.org) |
-| Git | Any | — |
+| Git Bash | Any | Recommended terminal on Windows |
 
 ---
 
@@ -152,10 +153,7 @@ CREATE DATABASE bundyclock_dev;
 ```bash
 cd backend
 
-# Windows
-.\gradlew.bat bootRun --args='--spring.profiles.active=dev'
-
-# macOS / Linux
+# Git Bash (Windows) / macOS / Linux
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
@@ -185,21 +183,15 @@ npm run dev
 ```bash
 cd face-recognition-service
 
-# Create a virtual environment (recommended)
+# Create a virtual environment (first time only)
 python -m venv .venv
 
-# Activate (Windows)
-.venv\Scripts\activate
+# Activate — Git Bash / macOS / Linux
+source .venv/Scripts/activate   # Git Bash on Windows
+source .venv/bin/activate        # macOS / Linux
 
-# Activate (macOS/Linux)
-source .venv/bin/activate
-
-# Install dependencies
+# Install dependencies (first time only)
 pip install -r requirements.txt
-
-# Copy and edit .env (optional)
-copy .env.example .env     # Windows
-cp .env.example .env       # macOS/Linux
 
 # Start service
 python run.py
@@ -209,32 +201,74 @@ python run.py
 - API Docs: http://localhost:5001/docs
 - Health check: http://localhost:5001/health
 
-> **Note:** First launch downloads DeepFace model weights (~500 MB). Subsequent starts are fast.
+> **Note:** First launch downloads the VGG-Face model weights (~580 MB) to `~/.deepface/weights/`. Subsequent starts are fast.
+
+> **Dependency note:** TensorFlow 2.20+ requires the `tf-keras` package. It is included in `requirements.txt`.
 
 ---
 
-## 5 · Running Everything Together (PowerShell)
+## 5 · Running Everything Together (Git Bash)
 
 Open **three separate terminals** and run:
 
-```powershell
+```bash
 # Terminal 1 — Backend
-cd C:\projects\2026\bundyclock\backend
-.\gradlew.bat bootRun --args='--spring.profiles.active=dev'
+cd /c/projects/2026/bundyclock/backend
+./gradlew bootRun --args='--spring.profiles.active=dev'
 
 # Terminal 2 — Frontend
-cd C:\projects\2026\bundyclock\frontend
-npm install; npm run dev
+cd /c/projects/2026/bundyclock/frontend
+npm install && npm run dev
 
 # Terminal 3 — Face Recognition Service
-cd C:\projects\2026\bundyclock\face-recognition-service
-.venv\Scripts\activate
+cd /c/projects/2026/bundyclock/face-recognition-service
+source .venv/Scripts/activate
 python run.py
+```
+
+### Stopping & restarting (Git Bash)
+
+```bash
+# Kill processes on all service ports
+for port in 8080 5001 5173; do
+  PID=$(netstat -ano | grep "LISTENING" | grep ":${port} " | awk '{print $NF}' | head -1)
+  [ -n "$PID" ] && taskkill.exe //F //PID $PID
+done
 ```
 
 ---
 
-## 6 · Postman Collection
+## 6 · Face Registration Workflow
+
+Before employees can use the BundyClock, their face must be registered:
+
+1. Go to **Employees** → find the employee → click **Register Face**
+2. The webcam opens with a **3-second countdown** — position the employee's face in the frame
+3. The photo is automatically captured and sent to the face service
+4. Register **2–5 photos** from slightly different angles for best accuracy
+5. Each photo is accumulated (not overwritten) — all registered embeddings are used during verification
+
+---
+
+## 7 · BundyClock Face Scan Workflow
+
+1. Go to **BundyClock** and select **Time In** or **Time Out**
+2. Position your face in the frame — a **3-second countdown** fires the auto-capture
+3. The system verifies the face against all registered embeddings
+4. On success: attendance is automatically recorded
+5. On error: the message is shown for 3 seconds then the countdown restarts
+
+### Business Rules enforced by the backend
+
+| Condition | Result |
+|-----------|--------|
+| Employee already timed in today and tries to time in again | `409` — "Already timed in today. Please time out first." |
+| Employee tries to time out with no time-in record today | `409` — "Cannot time out — no time-in record found for today." |
+| Employee already timed out today and tries again | `409` — "Already timed out today." |
+
+---
+
+## 8 · Postman Collection
 
 Import `bundyclock-postman-collection.json` in Postman.
 
@@ -248,7 +282,7 @@ Set collection variables:
 
 ---
 
-## 7 · API Endpoints Summary
+## 9 · API Endpoints Summary
 
 ### Spring Boot (`:8080`)
 
@@ -260,9 +294,10 @@ Set collection variables:
 | `GET` | `/api/employees/{id}` | Get employee by ID |
 | `PUT` | `/api/employees/{id}` | Update employee |
 | `DELETE`| `/api/employees/{id}` | Delete employee |
-| `POST` | `/api/attendance/time-in` | Record Time-In |
-| `POST` | `/api/attendance/time-out` | Record Time-Out |
+| `POST` | `/api/attendance/time-in` | Record Time-In (with duplicate guard) |
+| `POST` | `/api/attendance/time-out` | Record Time-Out (with duplicate guard) |
 | `GET` | `/api/attendance` | All attendance logs |
+| `GET` | `/api/attendance/employee/{id}` | Logs for one employee |
 | `POST` | `/api/face/verify` | Verify face (proxies to face-svc) |
 | `POST` | `/api/face/register` | Register face (proxies to face-svc) |
 
@@ -270,13 +305,13 @@ Set collection variables:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/verify-face` | Verify face image |
-| `POST` | `/register-face` | Register face for employee |
+| `POST` | `/verify-face` | Verify face image against all stored embeddings |
+| `POST` | `/register-face` | Register/accumulate face embedding for employee |
 | `GET` | `/health` | Health check |
 
 ---
 
-## 8 · Data Model Overview (ASCII)
+## 10 · Data Model Overview
 
 ```
 ┌──────────────┐        ┌───────────────────┐       ┌────────────────────┐
@@ -284,20 +319,24 @@ Set collection variables:
 ├──────────────┤        ├───────────────────┤       ├────────────────────┤
 │ id (UUID PK) │◄─┐     │ id (UUID PK)      │       │ id (UUID PK)       │
 │ name         │  └────►│ employee_id (FK)  │  ┌───►│ employee_id (FK)   │
-│ employee_code│        │ timestamp         │  │    │ embedding_vector   │
-│ department   │        │ type (IN/OUT)     │  │    │ raw_image_path     │
-│ email        │        │ image_path        │  │    │ model_used         │
-│ created_at   │  ┌────►│ confidence_score  │  └────┤ created_at         │
+│ employee_code│        │ timestamp         │  │    │ raw_image_path     │
+│ department   │        │ type (IN/OUT)     │  │    │ model_used         │
+│ email        │        │ image_path        │  │    │ created_at         │
+│ created_at   │  ┌────►│ confidence_score  │  └────┤                    │
 │ updated_at   │  │     │ verified          │       └────────────────────┘
 └──────────────┘  │     │ notes             │
                   │     └───────────────────┘
                   │
            (same FK pattern)
+
+Embeddings on disk (face-recognition-service/data/embeddings/):
+  {employee_id}.json → { "employee_id": "...", "embeddings": [[...], [...]] }
+  Multiple photos per employee are accumulated — not overwritten.
 ```
 
 ---
 
-## 9 · Production Hardening Notes
+## 11 · Production Hardening Notes
 
 ### Security
 - [ ] Replace placeholder JWT with real Spring Security JWT filter chain (`jjwt` or `nimbus-jose-jwt`)
@@ -307,7 +346,6 @@ Set collection variables:
 - [ ] Rate-limit `/api/auth/login` with `bucket4j` or nginx
 
 ### Database
-- [ ] Move from IDENTITY/UUID to a proper surrogate key strategy
 - [ ] Consider `pgvector` extension for storing face embedding vectors natively with similarity search
 - [ ] Add DB connection pooling (HikariCP — already included by Spring Boot)
 - [ ] Set up read replicas for attendance log queries
@@ -333,11 +371,10 @@ Set collection variables:
 
 ---
 
-## 10 · Known MVP Limitations
+## 12 · Known MVP Limitations
 
 1. JWT authentication returns a **stub token** — not validated by the backend.
-2. Face recognition in `FaceServiceImpl.java` is **not yet wired** to the Python service HTTP client.
-3. Image storage is **local filesystem** — will not work in stateless/containerized environments.
-4. No pagination on list endpoints.
-5. Face embeddings comparison is O(n) linear scan — use `pgvector` for scale.
-# bundyClock_withFacialRecog
+2. Image storage is **local filesystem** — will not work in stateless/containerised environments without a volume or object store.
+3. No pagination on list endpoints.
+4. Face embeddings comparison is O(n × k) linear scan — use `pgvector` for scale.
+5. DeepFace model weights (~580 MB) are downloaded on first run; ensure internet access on first start.

@@ -3,6 +3,7 @@ import {
   Typography, Button, Chip, Avatar, Box,
 } from '@mui/material'
 import PersonIcon from '@mui/icons-material/Person'
+import FaceIcon from '@mui/icons-material/Face'
 import { useNavigate } from 'react-router-dom'
 
 /**
@@ -41,6 +42,14 @@ export default function EmployeeCard({ employee, onDelete }) {
       <CardActions>
         <Button size="small" onClick={() => navigate(`/employees/${employee.id}`)}>
           View
+        </Button>
+        <Button
+          size="small"
+          color="primary"
+          startIcon={<FaceIcon />}
+          onClick={() => navigate(`/employees/${employee.id}/register-face`)}
+        >
+          Register Face
         </Button>
         {onDelete && (
           <Button size="small" color="error" onClick={() => onDelete(employee.id)}>

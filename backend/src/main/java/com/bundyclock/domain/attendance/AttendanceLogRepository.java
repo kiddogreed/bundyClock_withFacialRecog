@@ -12,6 +12,9 @@ public interface AttendanceLogRepository extends JpaRepository<AttendanceLog, UU
 
     List<AttendanceLog> findByEmployeeIdOrderByTimestampDesc(UUID employeeId);
 
+    java.util.Optional<AttendanceLog> findTopByEmployeeIdAndTimestampAfterOrderByTimestampDesc(
+        UUID employeeId, ZonedDateTime after);
+
     List<AttendanceLog> findByTimestampBetweenOrderByTimestampDesc(
         ZonedDateTime from, ZonedDateTime to);
 
