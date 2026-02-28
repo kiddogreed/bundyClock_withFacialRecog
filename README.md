@@ -238,7 +238,108 @@ done
 
 ---
 
-## 6 · Face Registration Workflow
+## 6 · Unit Testing (Backend)
+
+### Overview
+
+The backend uses **JUnit 5** + **MockMvc** (`@WebMvcTest`) for controller-layer tests.
+Each controller is tested in isolation — the service layer is replaced with a **Mockito** mock, so no database or external services are required.
+
+| Test class | Controller under test | # tests |
+|---|---|---|
+| `EmployeeControllerTest` | `GET/POST/PUT/DELETE /api/employees` | 9 |
+| `AttendanceControllerTest` | `POST time-in/out`, `GET /api/attendance` | 8 |
+| `FaceControllerTest` | `POST /api/face/verify` + `/register` | 6 |
+| `AuthControllerTest` | `POST /api/auth/login` | 3 |
+
+### Test design
+
+- `@WebMvcTest` — loads only the web layer (controller + security + exception handler). No JPA or real beans.
+- `@Import(SecurityConfig.class)` — loads the project's own `SecurityConfig` so CSRF is disabled and all requests are permitted (matching production behaviour).
+- `@WithMockUser` — satisfies Spring Security's requirement for an authenticated principal during tests.
+- `@MockBean` — replaces the service interface with a Mockito mock. `when(…)` stubs define the response per test.
+- `MockMultipartFile` — simulates multipart/form-data file uploads without touching the file system.
+- Error paths (404, 409, 500) are covered by stubbing the mock to throw the appropriate exception, which the `GlobalExceptionHandler` translates.
+
+### Running the tests
+
+```bash
+cd backend
+
+# Run all tests (unit + integration)
+./gradlew test
+
+# Run only the four controller unit tests
+./gradlew test \
+  --tests "com.bundyclock.domain.employee.EmployeeControllerTest" \
+  --tests "com.bundyclock.domain.attendance.AttendanceControllerTest" \
+  --tests "com.bundyclock.domain.face.FaceControllerTest" \
+  --tests "com.bundyclock.auth.AuthControllerTest"
+
+# Run a single nested test class
+./gradlew test --tests "com.bundyclock.domain.employee.EmployeeControllerTest\$GetAllEmployees"
+
+# Run with verbose output
+./gradlew test --info
+
+# Run and always re-execute (skip up-to-date checks)
+./gradlew cleanTest test
+```
+
+### Viewing test reports
+
+After `./gradlew test`, open the HTML report in your browser:
+
+```
+backend/build/reports/tests/test/index.html
+```
+
+Or on Windows Git Bash:
+
+```bash
+start build/reports/tests/test/index.html
+```
+
+### Test application config (`src/test/resources/application.yml`)
+
+Tests use an **in-memory H2** database — no PostgreSQL connection is required:
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false   # schema created by Hibernate in test mode
+```
+
+### Adding new controller tests
+
+1. Create a file under `src/test/java/com/bundyclock/<package>/<ControllerName>Test.java`
+2. Annotate the class:
+   ```java
+   @WebMvcTest(YourController.class)
+   @Import(SecurityConfig.class)
+   @WithMockUser
+   class YourControllerTest {
+       @Autowired MockMvc mockMvc;
+       @MockBean  YourService yourService;
+       // ...
+   }
+   ```
+3. Use `@Nested` + `@DisplayName` to group tests by endpoint.
+4. Use `mockMvc.perform(...)` + `.andExpect(...)` to assert status codes and JSON body.
+5. Run with `./gradlew test --tests "com.bundyclock.<package>.YourControllerTest"`.
+
+---
+
+## 7 · Face Registration Workflow
 
 Before employees can use the BundyClock, their face must be registered:
 
@@ -250,7 +351,7 @@ Before employees can use the BundyClock, their face must be registered:
 
 ---
 
-## 7 · BundyClock Face Scan Workflow
+## 8 · BundyClock Face Scan Workflow
 
 1. Go to **BundyClock** and select **Time In** or **Time Out**
 2. Position your face in the frame — a **3-second countdown** fires the auto-capture
@@ -268,7 +369,7 @@ Before employees can use the BundyClock, their face must be registered:
 
 ---
 
-## 8 · Postman Collection
+## 9 · Postman Collection
 
 Import `bundyclock-postman-collection.json` in Postman.
 
@@ -282,7 +383,7 @@ Set collection variables:
 
 ---
 
-## 9 · API Endpoints Summary
+## 10 · API Endpoints Summary
 
 ### Spring Boot (`:8080`)
 
@@ -311,7 +412,7 @@ Set collection variables:
 
 ---
 
-## 10 · Data Model Overview
+## 11 · Data Model Overview
 
 ```
 ┌──────────────┐        ┌───────────────────┐       ┌────────────────────┐
@@ -336,7 +437,7 @@ Embeddings on disk (face-recognition-service/data/embeddings/):
 
 ---
 
-## 11 · Production Hardening Notes
+## 12 · Production Hardening Notes
 
 ### Security
 - [ ] Replace placeholder JWT with real Spring Security JWT filter chain (`jjwt` or `nimbus-jose-jwt`)
@@ -371,7 +472,7 @@ Embeddings on disk (face-recognition-service/data/embeddings/):
 
 ---
 
-## 12 · Known MVP Limitations
+## 13 · Known MVP Limitations
 
 1. JWT authentication returns a **stub token** — not validated by the backend.
 2. Image storage is **local filesystem** — will not work in stateless/containerised environments without a volume or object store.
