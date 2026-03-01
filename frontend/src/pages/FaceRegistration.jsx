@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Container, Typography, Box, Card, CardContent,
   Alert, CircularProgress, Button, Chip, Avatar, Divider,
@@ -7,9 +7,10 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import FaceIcon from '@mui/icons-material/Face'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import PersonIcon from '@mui/icons-material/Person'
+import CameraAltIcon from '@mui/icons-material/CameraAlt'
 import { useNavigate, useParams } from 'react-router-dom'
 import WebcamCapture from '../components/WebcamCapture'
-import { getEmployee } from '../api/employees'
+import { getEmployee, uploadEmployeePhoto } from '../api/employees'
 import { registerFace } from '../api/face'
 import { useAppContext } from '../context/AppContext'
 
@@ -26,6 +27,9 @@ export default function FaceRegistration() {
   const [status, setStatus] = useState('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [registrationCount, setRegistrationCount] = useState(0)
+  // autoActive controls whether auto-capture countdown is running
+  const [autoActive, setAutoActive] = useState(true)
+  const lastBlobRef = useRef(null)
 
   useEffect(() => {
     getEmployee(id)
@@ -35,13 +39,25 @@ export default function FaceRegistration() {
   }, [id])
 
   const handleCapture = async (blob) => {
+    lastBlobRef.current = blob
     setStatus('uploading')
     setErrorMsg('')
     try {
       await registerFace(id, blob)
+      // Stop auto-capture immediately on success
+      setAutoActive(false)
       setStatus('success')
       setRegistrationCount(c => c + 1)
       showSnackbar(`Face registered for ${employee?.name}!`, 'success')
+
+      // Automatically set the captured image as profile photo
+      try {
+        const photoRes = await uploadEmployeePhoto(id, blob)
+        setEmployee(photoRes.data.data)  // updates photoUrl so avatar refreshes immediately
+        showSnackbar('Profile photo updated from captured image', 'success')
+      } catch {
+        // Non-critical — face was registered, photo update is best-effort
+      }
     } catch (err) {
       setStatus('error')
       const msg = err.code === 'ECONNABORTED'
@@ -54,6 +70,13 @@ export default function FaceRegistration() {
   const handleRetake = () => {
     setStatus('idle')
     setErrorMsg('')
+  }
+
+  // "Capture Another" — re-enables auto-capture countdown
+  const handleCaptureAnother = () => {
+    setStatus('idle')
+    setErrorMsg('')
+    setAutoActive(true)
   }
 
   if (loadingEmployee) {
@@ -75,6 +98,8 @@ export default function FaceRegistration() {
     )
   }
 
+  const avatarSrc = employee.photoUrl ? `http://localhost:8080${employee.photoUrl}` : null
+
   return (
     <Container maxWidth="sm" sx={{ mt: 4, mb: 4 }}>
       <Button
@@ -94,8 +119,11 @@ export default function FaceRegistration() {
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Box display="flex" alignItems="center" gap={2}>
-            <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
-              <PersonIcon />
+            <Avatar
+              src={avatarSrc}
+              sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}
+            >
+              {!avatarSrc && <PersonIcon />}
             </Avatar>
             <Box>
               <Typography variant="h6" lineHeight={1.2}>{employee.name}</Typography>
@@ -124,8 +152,9 @@ export default function FaceRegistration() {
             Capture Face Image
           </Typography>
           <Typography variant="body2" color="text.secondary" mb={2}>
-            Position the employee's face clearly in the frame — it will be captured automatically.
-            Register multiple photos to improve recognition accuracy.
+            {autoActive
+              ? 'Position the employee\'s face clearly in the frame — it will be captured automatically.'
+              : 'Face captured and set as profile photo. Click "Capture Another" to add more angles.'}
           </Typography>
 
           <Divider sx={{ mb: 2 }} />
@@ -135,7 +164,7 @@ export default function FaceRegistration() {
             onRetake={handleRetake}
             loading={status === 'uploading'}
             status={status}
-            autoCapture
+            autoCapture={autoActive}
           />
 
           {/* Status feedback */}
@@ -147,12 +176,25 @@ export default function FaceRegistration() {
               </Box>
             )}
             {status === 'success' && (
-              <Alert severity="success" icon={<CheckCircleIcon />}>
-                Face registered successfully! Capture another photo to improve accuracy, or go back.
+              <Alert severity="success" icon={<CheckCircleIcon />} sx={{ mb: 1.5 }}>
+                Face registered and set as profile photo!
               </Alert>
             )}
             {status === 'error' && (
               <Alert severity="error">{errorMsg}</Alert>
+            )}
+
+            {/* Show Capture Another only after stopping */}
+            {!autoActive && status !== 'uploading' && (
+              <Box display="flex" justifyContent="center" mt={1.5}>
+                <Button
+                  variant="outlined"
+                  startIcon={<CameraAltIcon />}
+                  onClick={handleCaptureAnother}
+                >
+                  Capture Another
+                </Button>
+              </Box>
             )}
           </Box>
         </CardContent>

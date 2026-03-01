@@ -3,6 +3,7 @@ import NavigationBar from './components/NavigationBar'
 import Login from './pages/Login'
 import EmployeeList from './pages/EmployeeList'
 import EmployeeRegistration from './pages/EmployeeRegistration'
+import EmployeeProfile from './pages/EmployeeProfile'
 import FaceRegistration from './pages/FaceRegistration'
 import BundyClock from './pages/BundyClock'
 import AttendanceLogs from './pages/AttendanceLogs'
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="/" element={<PrivateRoute><BundyClock /></PrivateRoute>} />
         <Route path="/employees" element={<PrivateRoute><EmployeeList /></PrivateRoute>} />
         <Route path="/employees/register" element={<PrivateRoute><EmployeeRegistration /></PrivateRoute>} />
+        <Route path="/employees/:id" element={<PrivateRoute><EmployeeProfile /></PrivateRoute>} />
         <Route path="/employees/:id/register-face" element={<PrivateRoute><FaceRegistration /></PrivateRoute>} />
         <Route path="/attendance" element={<PrivateRoute><AttendanceLogs /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />

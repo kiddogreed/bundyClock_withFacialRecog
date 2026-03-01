@@ -30,17 +30,34 @@ export default function WebcamCapture({ onCapture, onRetake, loading = false, st
   const [capturedImage, setCapturedImage] = useState(null)
   const [countdown, setCountdown] = useState(autoCapture ? AUTO_CAPTURE_SECONDS : null)
 
-  // Auto-reset to live feed after success or error
+  // Auto-reset to live feed after success or error.
+  // On error + autoCapture ON:  reset after delay so the next person can try (prevents loop by only doing this when auto is still desired).
+  // On error + autoCapture OFF: parent stopped auto (e.g. attendance 409) — do NOT reset; leave error visible so user sees "Scan Again".
+  // On success + autoCapture ON:  reset after delay (e.g. FaceRegistration multi-capture flow).
+  // On success + autoCapture OFF: leave still; parent shows "Scan Again" button.
   useEffect(() => {
-    if (status === 'success' || status === 'error') {
+    if (status === 'error' && autoCapture) {
       const timer = setTimeout(() => {
         setCapturedImage(null)
-        if (autoCapture) setCountdown(AUTO_CAPTURE_SECONDS)
+        setCountdown(AUTO_CAPTURE_SECONDS)
+        onRetake?.()
+      }, AUTO_RESET_DELAY)
+      return () => clearTimeout(timer)
+    }
+    if (status === 'success' && autoCapture) {
+      const timer = setTimeout(() => {
+        setCapturedImage(null)
+        setCountdown(AUTO_CAPTURE_SECONDS)
         onRetake?.()
       }, AUTO_RESET_DELAY)
       return () => clearTimeout(timer)
     }
   }, [status, onRetake, autoCapture])
+
+  // Stop countdown immediately when parent disables autoCapture
+  useEffect(() => {
+    if (!autoCapture) setCountdown(null)
+  }, [autoCapture])
 
   // Countdown tick — only when live feed is showing and autoCapture is on
   useEffect(() => {
@@ -157,7 +174,8 @@ export default function WebcamCapture({ onCapture, onRetake, loading = false, st
               </Button>
             </Stack>
           )}
-          {(status === 'success' || status === 'error') && (
+          {/* Show "Resetting…" only when the camera will actually auto-reset (requires autoCapture=true) */}
+          {autoCapture && (status === 'error' || status === 'success') && (
             <Typography variant="caption" color="text.secondary" display="block" mt={1}>
               Resetting in {AUTO_RESET_DELAY / 1000}s…
             </Typography>

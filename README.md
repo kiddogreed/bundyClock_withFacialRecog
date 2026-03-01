@@ -36,9 +36,10 @@ bundyclock/
 │       │   │   │   └── AuthController.java
 │       │   │   ├── config/
 │       │   │   │   ├── AppConfig.java          ← RestTemplate bean
-│       │   │   │   ├── CorsConfig.java
+│       │   │   │   ├── CorsConfig.java         ← PATCH added to allowed methods
 │       │   │   │   ├── OpenApiConfig.java
-│       │   │   │   └── SecurityConfig.java
+│       │   │   │   ├── SecurityConfig.java
+│       │   │   │   └── WebMvcConfig.java       ← serves /uploads/** static files
 │       │   │   ├── common/
 │       │   │   │   ├── dto/
 │       │   │   │   │   └── ApiResponse.java
@@ -97,8 +98,9 @@ bundyclock/
 │           ├── Login.jsx
 │           ├── EmployeeList.jsx
 │           ├── EmployeeRegistration.jsx
-│           ├── BundyClock.jsx          ← auto face scan (no manual capture)
-│           ├── FaceRegistration.jsx    ← new: register faces per employee
+│           ├── EmployeeProfile.jsx         ← new: view/edit profile + upload photo
+│           ├── BundyClock.jsx              ← auto face scan; freezes camera after success
+│           ├── FaceRegistration.jsx        ← auto-stops after first capture; sets profile photo
 │           └── AttendanceLogs.jsx
 │
 ├── face-recognition-service/        ← Python FastAPI + DeepFace
@@ -118,9 +120,11 @@ bundyclock/
 │   │   ├── faces/           ← raw face images
 │   │   └── embeddings/      ← JSON embedding vectors (one file per employee)
 │   └── tests/
-│       └── test_face_router.py
+│       ├── test_face_router.py   ← router-level tests (all service calls mocked)
+│       └── test_face_service.py ← service unit tests (disk I/O + DeepFace mocked)
 │
 └── bundyclock-postman-collection.json
+└── CHANGELOG.md
 ```
 
 ---
@@ -238,104 +242,144 @@ done
 
 ---
 
-## 6 · Unit Testing (Backend)
+## 6 · Unit Testing
 
-### Overview
+### 6a · Backend (Spring Boot — JUnit 5 + MockMvc)
 
-The backend uses **JUnit 5** + **MockMvc** (`@WebMvcTest`) for controller-layer tests.
-Each controller is tested in isolation — the service layer is replaced with a **Mockito** mock, so no database or external services are required.
+#### Overview
 
-| Test class | Controller under test | # tests |
+Controller-layer tests use `@WebMvcTest` + Mockito mocks. No database or external services are required.
+
+| Test class | Endpoints covered | Tests |
 |---|---|---|
-| `EmployeeControllerTest` | `GET/POST/PUT/DELETE /api/employees` | 9 |
+| `EmployeeControllerTest` | `GET/POST/PUT/DELETE /api/employees`, `PATCH /{id}/photo` | 12 |
 | `AttendanceControllerTest` | `POST time-in/out`, `GET /api/attendance` | 8 |
 | `FaceControllerTest` | `POST /api/face/verify` + `/register` | 6 |
 | `AuthControllerTest` | `POST /api/auth/login` | 3 |
 
-### Test design
-
-- `@WebMvcTest` — loads only the web layer (controller + security + exception handler). No JPA or real beans.
-- `@Import(SecurityConfig.class)` — loads the project's own `SecurityConfig` so CSRF is disabled and all requests are permitted (matching production behaviour).
-- `@WithMockUser` — satisfies Spring Security's requirement for an authenticated principal during tests.
-- `@MockBean` — replaces the service interface with a Mockito mock. `when(…)` stubs define the response per test.
-- `MockMultipartFile` — simulates multipart/form-data file uploads without touching the file system.
-- Error paths (404, 409, 500) are covered by stubbing the mock to throw the appropriate exception, which the `GlobalExceptionHandler` translates.
-
-### Running the tests
+#### Running backend tests
 
 ```bash
 cd backend
 
-# Run all tests (unit + integration)
+# All tests
 ./gradlew test
 
-# Run only the four controller unit tests
-./gradlew test \
-  --tests "com.bundyclock.domain.employee.EmployeeControllerTest" \
-  --tests "com.bundyclock.domain.attendance.AttendanceControllerTest" \
-  --tests "com.bundyclock.domain.face.FaceControllerTest" \
-  --tests "com.bundyclock.auth.AuthControllerTest"
+# Specific controller
+./gradlew test --tests "com.bundyclock.domain.employee.EmployeeControllerTest"
 
-# Run a single nested test class
-./gradlew test --tests "com.bundyclock.domain.employee.EmployeeControllerTest\$GetAllEmployees"
-
-# Run with verbose output
-./gradlew test --info
-
-# Run and always re-execute (skip up-to-date checks)
+# Skip up-to-date cache and re-run
 ./gradlew cleanTest test
-```
 
-### Viewing test reports
-
-After `./gradlew test`, open the HTML report in your browser:
-
-```
-backend/build/reports/tests/test/index.html
-```
-
-Or on Windows Git Bash:
-
-```bash
+# View HTML report
 start build/reports/tests/test/index.html
 ```
 
-### Test application config (`src/test/resources/application.yml`)
+#### Test application config (`src/test/resources/application.yml`)
 
-Tests use an **in-memory H2** database — no PostgreSQL connection is required:
+Tests use an **in-memory H2** database — no PostgreSQL connection required:
 
 ```yaml
 spring:
   datasource:
     url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
     driver-class-name: org.h2.Driver
-    username: sa
-    password:
   jpa:
     hibernate:
       ddl-auto: create-drop
-    database-platform: org.hibernate.dialect.H2Dialect
   flyway:
-    enabled: false   # schema created by Hibernate in test mode
+    enabled: false
 ```
 
-### Adding new controller tests
+#### Test design notes
 
-1. Create a file under `src/test/java/com/bundyclock/<package>/<ControllerName>Test.java`
-2. Annotate the class:
-   ```java
-   @WebMvcTest(YourController.class)
-   @Import(SecurityConfig.class)
-   @WithMockUser
-   class YourControllerTest {
-       @Autowired MockMvc mockMvc;
-       @MockBean  YourService yourService;
-       // ...
-   }
+- `@WebMvcTest` — loads only the web layer (no JPA, no real beans).
+- `@Import(SecurityConfig.class)` — CSRF disabled, all requests permitted.
+- `@WithMockUser` — satisfies Spring Security principal requirement.
+- `@MockBean` — replaces service with Mockito stub.
+- `MockMultipartFile` — simulates multipart uploads (including photo PATCH).
+- Error paths (404, 409, 400) covered by stubbing exceptions → `GlobalExceptionHandler`.
+
+---
+
+### 6b · Frontend (React — Vitest + Testing Library)
+
+#### Overview
+
+Component and API module tests run in JSDOM via **Vitest**. No real browser or server is needed.
+
+| Test file | What is tested |
+|---|---|
+| `src/api/employees.test.js` | All 6 API functions — correct endpoint, method, payload; multipart boundary not overridden |
+| `src/components/WebcamCapture.test.jsx` | Rendering, countdown behaviour, autoCapture toggling, error/success state captions |
+| `src/pages/BundyClock.test.jsx` | Initial render, mode toggle, employee load, clock display |
+
+#### Running frontend tests
+
+```bash
+cd frontend
+
+# Install dependencies (first time)
+npm install
+
+# Run all tests once
+npm test
+
+# Watch mode (re-runs on file save)
+npm run test:watch
+
+# With coverage report
+npm run test:coverage
+# Coverage HTML: frontend/coverage/index.html
+```
+
+#### Adding new tests
+
+1. Create `*.test.jsx` / `*.test.js` next to the file under test.
+2. Mock external modules with `vi.mock('../path/to/module')`.
+3. Mock `react-webcam` so tests run without camera hardware:
+   ```js
+   vi.mock('react-webcam', () => ({ default: vi.fn(() => <video />) }))
    ```
-3. Use `@Nested` + `@DisplayName` to group tests by endpoint.
-4. Use `mockMvc.perform(...)` + `.andExpect(...)` to assert status codes and JSON body.
-5. Run with `./gradlew test --tests "com.bundyclock.<package>.YourControllerTest"`.
+4. Use `vi.useFakeTimers()` / `vi.advanceTimersByTime()` to test countdown logic.
+
+---
+
+### 6c · Python Face Service (pytest)
+
+#### Overview
+
+Two test modules cover the FastAPI router and the service layer independently.
+
+| Test file | What is tested |
+|---|---|
+| `tests/test_face_router.py` | All HTTP endpoints — validation (422), content-type guard (400), success / failure paths, accumulation, 500 on exception |
+| `tests/test_face_service.py` | `_cosine_similarity`, `register_face` (success, no-face, accumulation), `verify_face` (match, no-match, threshold, best-of-multiple) |
+
+#### Running Python tests
+
+```bash
+cd face-recognition-service
+source .venv/Scripts/activate   # Windows Git Bash
+source .venv/bin/activate        # macOS / Linux
+
+# All tests with verbose output
+pytest tests/ -v
+
+# Run a single file
+pytest tests/test_face_router.py -v
+
+# With coverage
+pip install pytest-cov
+pytest tests/ --cov=app --cov-report=term-missing
+```
+
+#### Test design notes
+
+- `patch("app.routers.face.face_service.verify_face")` — patches at the import location, not the definition location.
+- `monkeypatch.setattr("app.core.config.settings.EMBEDDINGS_DIR", ...)` — redirects disk reads/writes to `tmp_path` pytest fixtures.
+- `DUMMY_IMAGE = b"\xff\xd8..."` — JPEG magic bytes that pass the content-type guard without needing a real image.
+- No DeepFace model weights are downloaded during test runs.
 
 ---
 
@@ -356,8 +400,10 @@ Before employees can use the BundyClock, their face must be registered:
 1. Go to **BundyClock** and select **Time In** or **Time Out**
 2. Position your face in the frame — a **3-second countdown** fires the auto-capture
 3. The system verifies the face against all registered embeddings
-4. On success: attendance is automatically recorded
-5. On error: the message is shown for 3 seconds then the countdown restarts
+4. On **success**: attendance is recorded; the camera freezes on the captured frame; the completed toggle button (Time In or Time Out) is disabled to prevent double-recording; a **Scan Again** button appears
+5. On **face-not-recognised error**: the error message shows for 3 seconds then the countdown restarts automatically so the next person can try
+6. On **attendance API error** (e.g. duplicate 409): auto-capture stops immediately — the error stays visible and **Scan Again** must be clicked manually
+7. Clicking **Scan Again** resets the camera, re-enables both toggles, and restarts the countdown
 
 ### Business Rules enforced by the backend
 
@@ -383,7 +429,72 @@ Set collection variables:
 
 ---
 
-## 10 · API Endpoints Summary
+## 10 · Test Accounts & Sample Data
+
+Use these credentials and sample employee profiles to explore the system without setting up real data.
+
+### Admin Login
+
+| Field | Value |
+|-------|-------|
+| Username | `admin` |
+| Password | `admin123` |
+
+> The admin account is used for the `/api/auth/login` endpoint. It returns a stub JWT token that is accepted by all secured endpoints.
+
+---
+
+### Sample Employee Profiles
+
+These employee records can be created via `POST /api/employees` (or imported through the Postman collection) to simulate a realistic workforce for testing attendance, face registration, and BundyClock flows.
+
+| # | Name | Employee Code | Department | Email |
+|---|------|---------------|------------|-------|
+| 1 | **Maria Santos** | `EMP-001` | Engineering | maria.santos@bundyclock.local |
+| 2 | **James Rivera** | `EMP-002` | Human Resources | james.rivera@bundyclock.local |
+| 3 | **Ana Reyes** | `EMP-003` | Finance | ana.reyes@bundyclock.local |
+| 4 | **Carlo Mendoza** | `EMP-004` | Operations | carlo.mendoza@bundyclock.local |
+| 5 | **Sofia Torres** | `EMP-005` | Engineering | sofia.torres@bundyclock.local |
+| 6 | **Miguel Dela Cruz** | `EMP-006` | Sales | miguel.delacruz@bundyclock.local |
+| 7 | **Lena Villanueva** | `EMP-007` | IT Support | lena.villanueva@bundyclock.local |
+| 8 | **Ramon Castillo** | `EMP-008` | Operations | ramon.castillo@bundyclock.local |
+
+---
+
+### Quick Seed via Postman
+
+1. Log in with the admin credentials above to get the stub token.
+2. In the Postman collection, open the **Employees → Create Employee** request.
+3. Copy-paste a sample profile from the table above into the request body:
+
+```json
+{
+  "name": "Maria Santos",
+  "employeeCode": "EMP-001",
+  "department": "Engineering",
+  "email": "maria.santos@bundyclock.local"
+}
+```
+
+4. Repeat for each employee you want to seed.
+5. After creating employees, use **Face Registration** (Register Face button on the Employee List page) to register their faces before testing the BundyClock flow.
+
+---
+
+### Testing Scenarios
+
+| Scenario | Steps |
+|----------|-------|
+| Happy path — Time In | Select **Time In**, show a registered face, confirm attendance logged |
+| Happy path — Time Out | After timing in, select **Time Out**, show same face |
+| Duplicate Time In | Attempt **Time In** twice in the same day → expect `409` error |
+| Unknown face | Show an unregistered face → verification fails gracefully |
+| Admin login | POST `{"username":"admin","password":"admin123"}` to `/api/auth/login` |
+| View logs | Open **Attendance Logs** page, filter by employee or date |
+
+---
+
+## 11 · API Endpoints Summary
 
 ### Spring Boot (`:8080`)
 
@@ -394,6 +505,7 @@ Set collection variables:
 | `POST` | `/api/employees` | Create employee |
 | `GET` | `/api/employees/{id}` | Get employee by ID |
 | `PUT` | `/api/employees/{id}` | Update employee |
+| `PATCH` | `/api/employees/{id}/photo` | Upload / replace employee profile photo |
 | `DELETE`| `/api/employees/{id}` | Delete employee |
 | `POST` | `/api/attendance/time-in` | Record Time-In (with duplicate guard) |
 | `POST` | `/api/attendance/time-out` | Record Time-Out (with duplicate guard) |
@@ -412,7 +524,7 @@ Set collection variables:
 
 ---
 
-## 11 · Data Model Overview
+## 12 · Data Model Overview
 
 ```
 ┌──────────────┐        ┌───────────────────┐       ┌────────────────────┐
@@ -423,9 +535,9 @@ Set collection variables:
 │ employee_code│        │ timestamp         │  │    │ raw_image_path     │
 │ department   │        │ type (IN/OUT)     │  │    │ model_used         │
 │ email        │        │ image_path        │  │    │ created_at         │
-│ created_at   │  ┌────►│ confidence_score  │  └────┤                    │
-│ updated_at   │  │     │ verified          │       └────────────────────┘
-└──────────────┘  │     │ notes             │
+│ photo_url    │  ┌────►│ confidence_score  │  └────┤                    │
+│ created_at   │  │     │ verified          │       └────────────────────┘
+│ updated_at   │  │     │ notes             │
                   │     └───────────────────┘
                   │
            (same FK pattern)
@@ -437,7 +549,7 @@ Embeddings on disk (face-recognition-service/data/embeddings/):
 
 ---
 
-## 12 · Production Hardening Notes
+## 13 · Production Hardening Notes
 
 ### Security
 - [ ] Replace placeholder JWT with real Spring Security JWT filter chain (`jjwt` or `nimbus-jose-jwt`)
@@ -472,7 +584,7 @@ Embeddings on disk (face-recognition-service/data/embeddings/):
 
 ---
 
-## 13 · Known MVP Limitations
+## 14 · Known MVP Limitations
 
 1. JWT authentication returns a **stub token** — not validated by the backend.
 2. Image storage is **local filesystem** — will not work in stateless/containerised environments without a volume or object store.

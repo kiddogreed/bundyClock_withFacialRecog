@@ -33,6 +33,9 @@ public class Employee {
     @Column(unique = true)
     private String email;
 
+    @Column(name = "photo_url")
+    private String photoUrl;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private ZonedDateTime createdAt;

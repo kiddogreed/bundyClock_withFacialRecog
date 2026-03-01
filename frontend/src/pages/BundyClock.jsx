@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Container, Typography, Box, Card, CardContent, Grid,
-  Alert, CircularProgress, Chip, Divider, ToggleButton, ToggleButtonGroup,
+  Alert, Button, CircularProgress, Chip, Divider, ToggleButton, ToggleButtonGroup,
 } from '@mui/material'
 import LoginIcon from '@mui/icons-material/Login'
 import LogoutIcon from '@mui/icons-material/Logout'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import FaceIcon from '@mui/icons-material/Face'
+import CameraAltIcon from '@mui/icons-material/CameraAlt'
 import WebcamCapture from '../components/WebcamCapture'
 import { timeIn, timeOut } from '../api/attendance'
 import { verifyFace } from '../api/face'
@@ -24,6 +25,12 @@ export default function BundyClock() {
   const [lastAction, setLastAction] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [now, setNow] = useState(new Date())
+  // autoActive: countdown runs when true, stops permanently after success
+  const [autoActive, setAutoActive] = useState(true)
+  // doneMode: locks the toggle button for the mode that already recorded successfully
+  const [doneMode, setDoneMode] = useState(null)
+  // scanKey: incrementing this remounts WebcamCapture to clear its internal capturedImage state
+  const [scanKey, setScanKey] = useState(0)
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000)
@@ -56,6 +63,7 @@ export default function BundyClock() {
       if (!result.matched) {
         setStatus('error')
         setErrorMsg(result.message || 'Face not recognized. Please try again.')
+        // Errors keep autoActive true so the countdown restarts automatically
         return
       }
 
@@ -67,15 +75,31 @@ export default function BundyClock() {
 
       // Step 3 — auto time-in / time-out
       const fn = mode === 'TIME_IN' ? timeIn : timeOut
-      const attendRes = await fn(result.employeeId, blob)
+      let attendRes
+      try {
+        attendRes = await fn(result.employeeId, blob)
+      } catch (attendErr) {
+        // Attendance errors (409 already recorded, 500, timeout) must stop auto-capture
+        // to prevent an infinite retry loop where the same face keeps triggering the same error.
+        setAutoActive(false)
+        setStatus('error')
+        const msg = attendErr.response?.data?.message
+          ?? (attendErr.code === 'ECONNABORTED' ? 'Request timed out. Please try again.' : 'Failed to record attendance. Please try again.')
+        setErrorMsg(msg)
+        return
+      }
       const actionTime = new Date()
       setLastAction({ type: mode, employee: emp, time: actionTime, log: attendRes.data.data })
       setStatus('success')
+      // Stop auto-capture and lock the completed mode's toggle button
+      setAutoActive(false)
+      setDoneMode(mode)
       showSnackbar(
         `${mode === 'TIME_IN' ? 'Time-In' : 'Time-Out'} recorded for ${emp?.name ?? 'employee'}!`,
         'success'
       )
     } catch (err) {
+      // Face verification / network errors — keep autoActive so the next person can try
       setStatus('error')
       const msg = err.code === 'ECONNABORTED'
         ? 'Request timed out — face service is busy, please try again.'
@@ -84,7 +108,17 @@ export default function BundyClock() {
     }
   }
 
+  // Reset everything and re-enable auto-capture
+  const handleScanAgain = useCallback(() => {
+    resetToIdle()
+    setAutoActive(true)
+    setDoneMode(null)
+    setScanKey(k => k + 1)  // remount WebcamCapture to clear frozen captured image
+  }, [resetToIdle])
+
   const isProcessing = status === 'verifying' || status === 'recording'
+
+  const isAttendanceError = status === 'error' && !autoActive
 
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
@@ -103,13 +137,20 @@ export default function BundyClock() {
         <ToggleButtonGroup
           value={mode}
           exclusive
-          onChange={(_, val) => { if (val) { setMode(val); resetToIdle() } }}
+          onChange={(_, val) => {
+            if (val && val !== doneMode) {
+              setMode(val)
+              resetToIdle()
+              setAutoActive(true)
+              setScanKey(k => k + 1)  // fresh camera on mode switch
+            }
+          }}
           disabled={isProcessing}
         >
-          <ToggleButton value="TIME_IN" sx={{ px: 4 }}>
+          <ToggleButton value="TIME_IN" sx={{ px: 4 }} disabled={doneMode === 'TIME_IN'}>
             <LoginIcon sx={{ mr: 1 }} /> Time In
           </ToggleButton>
-          <ToggleButton value="TIME_OUT" sx={{ px: 4 }}>
+          <ToggleButton value="TIME_OUT" sx={{ px: 4 }} disabled={doneMode === 'TIME_OUT'}>
             <LogoutIcon sx={{ mr: 1 }} /> Time Out
           </ToggleButton>
         </ToggleButtonGroup>
@@ -125,12 +166,25 @@ export default function BundyClock() {
                 {mode === 'TIME_IN' ? 'Time In — Face Scan' : 'Time Out — Face Scan'}
               </Typography>
               <WebcamCapture
+                key={scanKey}
                 onCapture={handleCapture}
                 onRetake={resetToIdle}
                 loading={isProcessing}
                 status={status}
-                autoCapture
+                autoCapture={autoActive}
               />
+              {/* Scan Again button shown after success or after an attendance error (loop-stopped) */}
+              {(status === 'success' || isAttendanceError) && !autoActive && (
+                <Box display="flex" justifyContent="center" mt={2}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<CameraAltIcon />}
+                    onClick={handleScanAgain}
+                  >
+                    Scan Again
+                  </Button>
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>

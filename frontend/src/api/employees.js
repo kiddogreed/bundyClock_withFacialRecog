@@ -24,3 +24,17 @@ export const updateEmployee = (id, employee) =>
 /** DELETE /api/employees/:id */
 export const deleteEmployee = (id) =>
   api.delete(`/employees/${id}`)
+
+/**
+ * PATCH /api/employees/:id/photo
+ * @param {string} id
+ * @param {Blob} photoBlob
+ */
+export const uploadEmployeePhoto = (id, photoBlob) => {
+  const formData = new FormData()
+  formData.append('photo', photoBlob, 'photo.jpg')
+  // Do NOT set Content-Type manually — axios must auto-set it with the multipart boundary
+  return api.patch(`/employees/${id}/photo`, formData, {
+    timeout: 30000,
+  })
+}

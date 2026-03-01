@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -243,6 +244,66 @@ class EmployeeControllerTest {
 
             mockMvc.perform(delete("/api/employees/{id}", id))
                     .andExpect(status().isNotFound());
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // PATCH /api/employees/{id}/photo
+    // -------------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("PATCH /api/employees/{id}/photo")
+    class UploadPhoto {
+
+        @Test
+        @DisplayName("returns 200 with updated employee containing photoUrl")
+        void uploadsPhotoSuccessfully() throws Exception {
+            UUID id = UUID.randomUUID();
+            Employee updated = Employee.builder()
+                    .id(id)
+                    .name("Alice Reyes")
+                    .employeeCode("EMP-001")
+                    .department("Engineering")
+                    .email("alice@example.com")
+                    .photoUrl("/uploads/employee-photos/" + id + ".jpg")
+                    .build();
+            when(employeeService.updatePhoto(eq(id), any())).thenReturn(updated);
+
+            MockMultipartFile photo = new MockMultipartFile(
+                    "photo", "profile.jpg", "image/jpeg", new byte[]{1, 2, 3, 4});
+
+            mockMvc.perform(multipart("/api/employees/{id}/photo", id)
+                            .file(photo)
+                            .with(request -> { request.setMethod("PATCH"); return request; }))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(true))
+                    .andExpect(jsonPath("$.data.photoUrl").value("/uploads/employee-photos/" + id + ".jpg"));
+        }
+
+        @Test
+        @DisplayName("returns 404 when employee does not exist")
+        void returns404WhenEmployeeNotFound() throws Exception {
+            UUID id = UUID.randomUUID();
+            when(employeeService.updatePhoto(eq(id), any()))
+                    .thenThrow(new ResourceNotFoundException("Employee not found"));
+
+            MockMultipartFile photo = new MockMultipartFile(
+                    "photo", "profile.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+            mockMvc.perform(multipart("/api/employees/{id}/photo", id)
+                            .file(photo)
+                            .with(request -> { request.setMethod("PATCH"); return request; }))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("returns 400 when no file is provided")
+        void returns400WhenNoFile() throws Exception {
+            UUID id = UUID.randomUUID();
+
+            mockMvc.perform(multipart("/api/employees/{id}/photo", id)
+                            .with(request -> { request.setMethod("PATCH"); return request; }))
+                    .andExpect(status().isBadRequest());
         }
     }
 }

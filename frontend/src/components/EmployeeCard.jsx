@@ -4,24 +4,29 @@ import {
 } from '@mui/material'
 import PersonIcon from '@mui/icons-material/Person'
 import FaceIcon from '@mui/icons-material/Face'
+import EditIcon from '@mui/icons-material/Edit'
 import { useNavigate } from 'react-router-dom'
 
 /**
  * EmployeeCard — displays a summary of an employee.
  *
  * Props:
- *   employee: { id, name, employeeCode, department, email }
+ *   employee: { id, name, employeeCode, department, email, photoUrl }
  *   onDelete?(id: string): void
  */
 export default function EmployeeCard({ employee, onDelete }) {
   const navigate = useNavigate()
+  const avatarSrc = employee.photoUrl ? `http://localhost:8080${employee.photoUrl}` : null
 
   return (
     <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <CardContent sx={{ flex: 1 }}>
         <Box display="flex" alignItems="center" gap={2} mb={1}>
-          <Avatar sx={{ bgcolor: 'primary.main' }}>
-            <PersonIcon />
+          <Avatar
+            src={avatarSrc}
+            sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}
+          >
+            {!avatarSrc && <PersonIcon />}
           </Avatar>
           <Box>
             <Typography variant="h6" lineHeight={1.2}>{employee.name}</Typography>
@@ -40,8 +45,8 @@ export default function EmployeeCard({ employee, onDelete }) {
         )}
       </CardContent>
       <CardActions>
-        <Button size="small" onClick={() => navigate(`/employees/${employee.id}`)}>
-          View
+        <Button size="small" startIcon={<EditIcon />} onClick={() => navigate(`/employees/${employee.id}`)}>
+          Profile
         </Button>
         <Button
           size="small"
