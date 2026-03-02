@@ -37,4 +37,13 @@ public class FaceController {
         FaceEmbedding embedding = faceService.registerFace(employeeId, image);
         return ResponseEntity.ok(ApiResponse.ok("Face registered", embedding));
     }
+
+    @GetMapping("/employee/{employeeId}/status")
+    @Operation(summary = "Get face registration status for an employee")
+    public ResponseEntity<ApiResponse<FaceStatusResponse>> getFaceStatus(
+            @PathVariable UUID employeeId) {
+
+        FaceStatusResponse status = faceService.getFaceStatus(employeeId);
+        return ResponseEntity.ok(ApiResponse.ok(status));
+    }
 }

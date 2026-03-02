@@ -1,19 +1,31 @@
 # BundyClock — Future Phase Improvement Plan
 
-> Generated: February 25, 2026  
-> Based on current MVP implementation
+> Generated: February 25, 2026 · Last updated: March 2, 2026  
+> Based on current MVP implementation (v0.6.0)
 
 ---
 
 ## Current State Summary
 
-The MVP delivers:
+### Initially delivered (v0.0.1)
 - JWT stub authentication (not validated by backend)
 - Employee CRUD with face registration
 - Face recognition via DeepFace (VGG-Face + cosine similarity over flat JSON files)
 - Time-In / Time-Out with duplicate guard (per-day business rule)
 - Attendance log viewer with type/date filters
 - Three-service architecture: Spring Boot · React/Vite · FastAPI/DeepFace
+
+### Completed since plan was written (v0.1.0 → v0.6.0)
+- ✅ **Employee profile photo upload** — `PATCH /api/employees/{id}/photo`, local file storage, avatar display (`EmployeeCard.jsx`)
+- ✅ **Employee Profile page** (`/employees/:id`) — inline edit, avatar hover-to-change, Save Photo / Save Changes actions
+- ✅ **CORS fix** — PATCH method added to allowed origins (`CorsConfig.java`)
+- ✅ **FaceRegistration UX** — auto-stops after first capture; captured blob is immediately set as profile photo
+- ✅ **BundyClock UX — camera freeze & Scan Again** — camera freezes on success frame; "Scan Again" button for re-capture
+- ✅ **BundyClock UX — toggle disable on success** — completed toggle (Time In or Time Out) is disabled to prevent double-recording
+- ✅ **BundyClock UX — attendance error isolation** — attendance errors stop auto-capture without interrupting face-not-recognised retry loop
+- ✅ **Multi-embedding accumulation** — multiple photos per employee are accumulated in a single JSON file, not overwritten
+- ✅ **Full unit test coverage** — JUnit 5/MockMvc (backend), Vitest/Testing Library (frontend), pytest (Python service)
+- ✅ **One-command startup** — `start.bat` (Windows) and `start.sh` (Bash) launch all three services simultaneously
 
 ---
 
@@ -114,10 +126,14 @@ The MVP delivers:
 > **Priority: Medium**
 
 ### Employee Profile
-- [ ] **Employee profile photo** (separate from face embeddings) — stored in object storage
+- [x] **Employee profile photo** — `PATCH /api/employees/{id}/photo`; stored locally in `uploads/employee-photos/`; avatar shown on `EmployeeCard.jsx` and `EmployeeProfile.jsx` *(done v0.1.0)*
+- [x] **Employee Profile page** — `EmployeeProfile.jsx` at `/employees/:id` with inline edit, hover-to-change avatar, face status, and upload *(done v0.1.0)*
+- [ ] Move photo storage from local filesystem → **AWS S3 / Azure Blob Storage** (current local storage won't work in containers)
 - [ ] **Position/designation** field (currently only `department`)
 - [ ] **Employee status** — `ACTIVE`, `RESIGNED`, `ON_LEAVE` — prevent inactive employees from clocking in
 - [ ] **Date hired** / **Date resigned** fields
+- [ ] Show **face registration status** on `EmployeeProfile.jsx` (how many embeddings registered, last registered date)
+- [ ] Add **recent attendance** tab on `EmployeeProfile.jsx` (last 30 days)
 
 ### Shift Assignment
 - [ ] UI for assigning shifts to employees
@@ -128,14 +144,18 @@ The MVP delivers:
 - [ ] Add server-side search by name, code, department
 - [ ] Add sort options (by name, department, date hired)
 
-### Employee View Page
-- [ ] The `/employees/:id` route exists in `App.jsx` but has no destination page — build an `EmployeeDetail.jsx` showing profile, face status, and recent attendance
-
 ---
 
 ## Phase 7 — Infrastructure & DevOps
 
 > **Priority: Medium — required before containerized / cloud deployment**
+
+### Startup Scripts
+- [x] `start.bat` — Windows batch launcher; each service opens in its own `cmd` window *(done v0.6.0)*
+- [x] `start.sh` — Bash launcher; all three services run as background jobs, `Ctrl+C` kills all *(done v0.6.0)*
+- [ ] `start.sh` — auto-activate Python `.venv` before starting the face service (currently requires manual `source .venv/Scripts/activate` first)
+- [ ] `start.sh` — add a pre-flight check that verifies node_modules, .venv, and Java are present before launching
+- [ ] `start.sh` — optional `--dev` / `--prod` flag to pass Spring profile (`dev` vs default)
 
 ### Dockerization
 - [ ] `Dockerfile` for Spring Boot backend
@@ -182,25 +202,29 @@ The MVP delivers:
 
 ## Quick Wins — Can Be Done Now
 
-| Item | File(s) | Effort |
-|---|---|---|
-| Real JWT auth | `AuthController.java`, `SecurityConfig.java` | Medium |
-| Expose date-range attendance query | `AttendanceController.java` | Small |
-| Add pagination to employee list | `EmployeeServiceImpl.java`, `EmployeeList.jsx` | Small |
-| `WebClient` replacing `RestTemplate` | `FaceServiceImpl.java`, `AppConfig.java` | Small |
-| Employee detail page | New `EmployeeDetail.jsx` | Small |
-| `pgvector` for embeddings | New Flyway migration + `face_service.py` | Medium |
-| Employee `status` field | New Flyway migration + `Employee.java` | Small |
-| Add `/api/attendance` date-range params | `AttendanceController.java` | Small |
+| Item | File(s) | Effort | Status |
+|---|---|---|---|
+| ~~Employee detail page~~ | ~~`EmployeeProfile.jsx`~~ | ~~Small~~ | ✅ Done v0.1.0 |
+| Expose date-range attendance query | `AttendanceController.java` | Small | ✅ Done v0.7.0 |
+| Add pagination to employee list | `EmployeeServiceImpl.java`, `EmployeeList.jsx` | Small | ✅ Done v0.7.0 |
+| `WebClient` replacing `RestTemplate` | `FaceServiceImpl.java`, `AppConfig.java` | Small | ✅ Done v0.7.0 |
+| Employee `status` field | New Flyway migration + `Employee.java` | Small | ✅ Done v0.7.0 |
+| Add `/api/attendance` date-range params | `AttendanceController.java` | Small | ✅ Done v0.7.0 |
+| Auto-activate `.venv` in `start.sh` | `start.sh` | Small | ✅ Done v0.7.0 |
+| Face registration status on profile page | `EmployeeProfile.jsx` + new endpoint | Small | ✅ Done v0.7.0 |
+| `pgvector` for embeddings | New Flyway migration + `face_service.py` | Medium | Pending |
+| Real JWT auth | `AuthController.java`, `SecurityConfig.java` | Medium | ✅ Done v0.7.0 |
 
 ---
 
 ## Known MVP Limitations (for reference)
 
-1. JWT authentication returns a **stub token** — not validated by the backend
+1. ~~JWT authentication returns a **stub token** — not validated by the backend~~ ✅ Fixed v0.7.0
 2. Image storage is **local filesystem** — won't work in stateless/containerized environments
-3. No pagination on list endpoints
+3. ~~No pagination on list endpoints~~ ✅ Fixed v0.7.0
 4. Face embedding comparison is **O(n × k) linear scan** — use `pgvector` for scale
 5. DeepFace model weights (~580 MB) are downloaded on first run
-6. `SecurityConfig` permits **all requests** — no route is protected
+6. ~~`SecurityConfig` permits **all requests** — no route is protected~~ ✅ Fixed v0.7.0
 7. Confidence threshold is global — no per-employee tuning
+8. ~~`start.sh` requires Python `.venv` to be manually activated before running — not self-contained~~ ✅ Fixed v0.7.0
+9. No environment pre-flight check — if a service dependency (Java, node, python) is missing, the startup script silently fails

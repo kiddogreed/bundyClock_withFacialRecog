@@ -12,6 +12,128 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.8.0] - 2026-03-02
+
+### Fixed
+
+- **BundyClock — "Face verification failed" caused by `employees.find is not a function`**
+  - `GET /api/employees` returns `Page<Employee>`; the response shape is `{ content: [...], pageable: {}, totalElements: N }` not a plain array.
+  - `setEmployees(res.data.data)` was storing the whole Page object so `employees.find(...)` threw a `TypeError`, caught by the outer `catch` which surfaced as the generic "Face verification failed." message.
+  - Fixed: `setEmployees(res.data.data?.content ?? [])` with `getEmployees(0, 200)` to load all employees for lookup.
+
+- **BundyClock — outer `catch` hid all real errors behind "Face verification failed."**
+  - Added explicit `instanceof TypeError` guard: stops auto-capture and shows the actual JS error message with "Please refresh the page."
+  - Added `console.error` with `err.message` so the real exception is always visible in DevTools even when a friendly message is shown.
+  - Error message chain priority corrected: `friendlyMessage` → `ECONNABORTED` text → `response.data.message` (only when `typeof data === 'object'`) → generic fallback.
+
+- **BundyClock — `result.employeeId` never matched a DB employee (endless "No match found")**
+  - Face embeddings on disk were registered under old employee UUIDs that no longer exist in the database.
+  - The FK constraint on `attendance_logs.employee_id → employees(id)` caused a `DataIntegrityViolationException` on every attendance write attempt.
+  - Fixed `GlobalExceptionHandler` to recognise FK violation keywords (`foreign key`, `fkey`, `not present in table`) and return a clear message: *"The employee linked to this face scan no longer exists. Please re-register the employee's face."*
+
+- **Spring Security — empty body on 401 / 403 masked auth errors**
+  - Spring Security's default behaviour returns `HTTP 403` with **no body** when a JWT is missing or expired; `err.response.data` was an empty string, so `response.data.message` evaluated to `undefined` and the generic fallback fired.
+  - Added `authenticationEntryPoint` and `accessDeniedHandler` to `SecurityConfig` using Jackson `ObjectMapper` to write a proper `ApiResponse.error(...)` JSON body (401 for missing/invalid token, 403 for insufficient permissions).
+
+- **`axiosClient.js` — 401/403 handling incomplete**
+  - Previously only `status === 401` triggered logout-redirect; `403` was silently swallowed with no message.
+  - Combined 401+403 into a single handler: sets `friendlyMessage = "Your session has expired. Redirecting to login…"`, waits 1.5 s (so the message renders in-UI) then redirects.
+  - Server-provided message from JSON body is used when available.
+  - Added `ECONNRESET` and `ETIMEDOUT` to the unreachable-server error codes.
+  - Added explicit 502/503/504 gateway handling: `"Server is not ready yet. Please wait a moment and try again."`
+
+- **Backend → face-service HTTP calls — no timeout configured**
+  - `WebClient` bean had zero timeout; on first DeepFace load (30–90 s) Spring Boot servlet threads blocked indefinitely. Under repeated auto-capture retries this exhausted the thread pool.
+  - `AppConfig` now configures a Netty `HttpClient` with: connect timeout 10 s, response timeout 120 s, read timeout 120 s, write timeout 30 s.
+
+- **Attendance API — 15 s default timeout caused false `ECONNABORTED` on cold start**
+  - `timeIn` / `timeOut` in `attendance.js` inherited the default 15 s axios timeout, silently failing on JVM warm-up.
+  - Added `ATTENDANCE_TIMEOUT = 60_000` (60 s) to both calls, matching the same pattern used in `face.js`.
+
+- **BundyClock — error message precedence bug in attendance error handler**
+  - `attendErr.response?.data?.message` was checked before `friendlyMessage`, meaning a server message like "Already timed in" could be shadowed by a network-layer message.
+  - Fixed priority: `friendlyMessage` → `ECONNABORTED` text → `response.data.message` → generic fallback.
+
+- **React Router v6 future-flag warnings**
+  - `BrowserRouter` in `main.jsx` missing `future={{ v7_startTransition: true, v7_relativeSplatPath: true }}`, triggering console warnings on every page load.
+
+- **`stop.bat` — infinite loop crashing Windows (required machine restart)**
+  - `for /f "tokens=5" %%a in ('netstat … ^| findstr ":8080 "')` matched remote-address column entries, not just local ports, feeding wrong PIDs — including system PID `0` — to `taskkill /F`, causing cascading system process kills and a BSOD-level crash.
+  - Replaced all three `for /f` + `netstat` loops with PowerShell `Get-NetTCPConnection -LocalPort <N>` which matches only the correct local-port listener; `Where-Object { $_ -gt 0 }` guards against PID 0; `Select-Object -Unique` prevents duplicate kills.
+
+- **`start.bat` — same dangerous `netstat` loops in port-cleanup section**
+  - Same root cause as `stop.bat`; replaced cleanup section with matching PowerShell `Get-NetTCPConnection` calls.
+
+- **`start.bat` — broken `cd /d` paths in `cmd /k` launch strings**
+  - Nested double-quotes inside the outer `cmd /k "…"` string caused `cd /d "%~dp0backend"` to silently fail (path truncated at the inner `"`). Services launched from the wrong working directory.
+  - Removed inner quotes: `cd /d %~dp0backend` (correct — `%~dp0` always ends with `\`).
+
+- **`start.bat` — health-check `poll_loop` used stale variable values**
+  - `%_waited%` and `%_max%` inside a `goto` loop are expanded once at parse-time, not per-iteration, so the timeout counter never advanced reliably.
+  - Changed to `!_waited!` / `!_max!` (delayed expansion, already enabled via `setlocal EnableDelayedExpansion`).
+
+### Added
+
+- **`start.bat` — mutex lock prevents duplicate launches opening unbounded cmd windows**
+  - Script writes `%TEMP%\bundyclock_start.lock` on entry; aborts immediately with a warning if the lock already exists, preventing a second `start.bat` from spawning 3 duplicate service windows.
+  - Lock is deleted at normal exit. `stop.bat` also deletes the lock as a recovery step if `start.bat` was force-closed mid-run.
+
+- **`start.bat` — pre-launch `BUNDYCLOCK_SVC` window cleanup**
+  - Kills any existing service windows tagged with `BUNDYCLOCK_SVC` at startup (previously only `stop.bat` did this). Re-running `start.bat` now always results in exactly 3 service windows — never stacks.
+
+- **`GlobalExceptionHandler` — FK violation error detection**
+  - Detects `foreign key` / `fkey` / `not present in table` in constraint messages and returns a user-readable explanation instead of leaking raw SQL.
+
+### Changed
+
+- **BundyClock — successful scan permanently switches to manual mode for the session**
+  - Added `everSucceeded` state (never resets). Once any time-in or time-out is successfully recorded, `autoActive` is **never re-enabled** for the rest of the browser session.
+  - `handleScanAgain` no longer calls `setAutoActive(true)` or `setDoneMode(null)` — the camera resets to idle in manual mode and the completed mode's toggle stays locked.
+  - Mode toggle `onChange` respects `everSucceeded`: `setAutoActive(!everSucceeded)` — auto-capture only fires on first page load before any record is saved.
+
+---
+
+## [0.7.0] - 2026-03-02
+
+### Added
+- **Real JWT authentication (`backend`)**
+  - `JwtService` — generates and validates HS-256 JWTs (jjwt 0.12.x); secret + expiry driven by `application.yml`.
+  - `JwtAuthenticationFilter` — `OncePerRequestFilter` that extracts Bearer tokens, validates, and populates `SecurityContext`.
+  - `SecurityConfig` — stateless session, BCrypt password encoder, `InMemoryUserDetailsManager` (admin/admin123 for MVP), JWT filter chain; public routes: `POST /api/auth/login`, `/uploads/**`, Swagger, actuator health.
+  - `AuthController` — real login via `AuthenticationManager`; returns `{ token, role }` on success, 401 on failure.
+  - Dependencies added: `jjwt-api:0.12.6`, `jjwt-impl:0.12.6` (runtimeOnly), `jjwt-jackson:0.12.6` (runtimeOnly).
+
+- **Employee status field (`backend`)**
+  - Flyway migration `V3__add_status_to_employees.sql`: `ALTER TABLE employees ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'`.
+  - `Employee.java` — new `EmployeeStatus` enum (`ACTIVE`, `ON_LEAVE`, `RESIGNED`); field default `ACTIVE`; `updateEmployee` now persists status changes.
+
+- **Pagination for employee list (`backend` + `frontend`)**
+  - `GET /api/employees` now returns `Page<Employee>` with `page` (default 0) and `size` (default 20) query params; sorted by name ascending.
+  - `EmployeeList.jsx` — reads `data.content`, shows MUI `Pagination` component at the bottom when `totalPages > 1`; `PAGE_SIZE = 12`.
+
+- **Date-range attendance query (`backend` + `frontend`)**
+  - `GET /api/attendance` now accepts optional `employeeId`, `from`, and `to` (ISO date-time) query params; all 4 filter combinations handled.
+  - `attendance.js` — new `getLogsInRange(employeeId, from, to)` helper.
+
+- **WebClient replacing RestTemplate (`backend`)**
+  - `spring-boot-starter-webflux` added; `AppConfig` exposes a `WebClient` bean.
+  - `FaceServiceImpl` migrated from `RestTemplate` to `WebClient` + `MultipartBodyBuilder`; `WebClientResponseException` handled separately.
+
+- **Face registration status on profile page (`backend` + `frontend`)**
+  - New `FaceStatusResponse` DTO: `employeeId`, `embeddingCount`, `registered`, `lastRegisteredAt`.
+  - `GET /api/face/employee/{employeeId}/status` endpoint via `FaceController` → `FaceService`.
+  - `face.js` — new `getFaceStatus(employeeId)` API helper.
+  - `EmployeeProfile.jsx` — shows "Face Registration" section in the left card (registered chip + photo count, or "Not yet registered"); updates alongside employee data on load.
+
+- **Auto-activate Python venv in `start.sh`**
+  - Before launching `python run.py`, the script now detects `.venv/Scripts/activate` (Windows/Git Bash) or `.venv/bin/activate` (macOS/Linux) and sources it automatically.
+  - Prints a clear warning with setup instructions if no `.venv` is found.
+
+### Changed
+- **All four backend controller tests** updated: `@MockBean JwtService` added to satisfy `SecurityConfig` constructor injection; `AuthControllerTest` fully rewritten for real authentication; `EmployeeControllerTest` updated for `PageImpl`; `AttendanceControllerTest` updated for `getLogs(any, any, any)`; `FaceControllerTest` gains two new face-status tests.
+
+---
+
 ## [0.6.0] - 2026-03-02
 
 ### Added

@@ -1,8 +1,12 @@
 import api from './axiosClient'
 
-/** GET /api/employees */
-export const getEmployees = () =>
-  api.get('/employees')
+/**
+ * GET /api/employees
+ * @param {number} page  0-based page index (default 0)
+ * @param {number} size  items per page (default 20)
+ */
+export const getEmployees = (page = 0, size = 20) =>
+  api.get('/employees', { params: { page, size } })
 
 /** GET /api/employees/:id */
 export const getEmployee = (id) =>

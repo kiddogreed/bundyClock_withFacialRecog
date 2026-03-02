@@ -10,7 +10,10 @@ import EditIcon from '@mui/icons-material/Edit'
 import SaveIcon from '@mui/icons-material/Save'
 import CameraAltIcon from '@mui/icons-material/CameraAlt'
 import FaceIcon from '@mui/icons-material/Face'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import { getEmployee, updateEmployee, uploadEmployeePhoto } from '../api/employees'
+import { getFaceStatus } from '../api/face'
+import { getErrorMessage } from '../api/axiosClient'
 import { useAppContext } from '../context/AppContext'
 
 export default function EmployeeProfile() {
@@ -28,6 +31,7 @@ export default function EmployeeProfile() {
   const [error, setError] = useState('')
   const [photoPreview, setPhotoPreview] = useState(null)
   const [photoBlob, setPhotoBlob] = useState(null)
+  const [faceStatus, setFaceStatus] = useState(null)
 
   const fetchEmployee = async () => {
     try {
@@ -40,14 +44,26 @@ export default function EmployeeProfile() {
         department: emp.department ?? '',
         email: emp.email ?? '',
       })
-    } catch {
-      setError('Failed to load employee details.')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load employee details.'))
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchEmployee() }, [id])
+  const fetchFaceStatus = async () => {
+    try {
+      const res = await getFaceStatus(id)
+      setFaceStatus(res.data.data)
+    } catch {
+      // non-critical — silently ignore
+    }
+  }
+
+  useEffect(() => {
+    fetchEmployee()
+    fetchFaceStatus()
+  }, [id])
 
   const handleChange = (e) =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
@@ -194,6 +210,29 @@ export default function EmployeeProfile() {
                   <Typography variant="caption" color="text.secondary" display="block">
                     Joined: {new Date(employee.createdAt).toLocaleDateString()}
                   </Typography>
+                )}
+              </Box>
+
+              <Divider flexItem />
+
+              {/* Face registration status */}
+              <Box width="100%">
+                <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" mb={0.5}>
+                  Face Registration
+                </Typography>
+                {faceStatus ? (
+                  faceStatus.registered ? (
+                    <Box display="flex" alignItems="center" gap={0.5}>
+                      <CheckCircleIcon color="success" fontSize="small" />
+                      <Typography variant="caption" color="success.main">
+                        {faceStatus.embeddingCount} photo{faceStatus.embeddingCount !== 1 ? 's' : ''} registered
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Typography variant="caption" color="text.disabled">Not yet registered</Typography>
+                  )
+                ) : (
+                  <Typography variant="caption" color="text.disabled">Loading…</Typography>
                 )}
               </Box>
 

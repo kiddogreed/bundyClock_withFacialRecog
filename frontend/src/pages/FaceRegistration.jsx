@@ -12,6 +12,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import WebcamCapture from '../components/WebcamCapture'
 import { getEmployee, uploadEmployeePhoto } from '../api/employees'
 import { registerFace } from '../api/face'
+import { getErrorMessage } from '../api/axiosClient'
 import { useAppContext } from '../context/AppContext'
 
 // status: 'idle' | 'uploading' | 'success' | 'error'
@@ -60,9 +61,10 @@ export default function FaceRegistration() {
       }
     } catch (err) {
       setStatus('error')
-      const msg = err.code === 'ECONNABORTED'
-        ? 'Request timed out — face service is busy, please try again.'
-        : (err.response?.data?.message ?? 'Registration failed — no face detected or service unavailable.')
+      const msg = err.friendlyMessage
+        ?? (err.code === 'ECONNABORTED'
+          ? 'Request timed out — face service is busy, please try again.'
+          : (err.response?.data?.message ?? 'Registration failed — no face detected or service unavailable.'))
       setErrorMsg(msg)
     }
   }

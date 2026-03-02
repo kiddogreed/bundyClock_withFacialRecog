@@ -16,14 +16,19 @@ export const verifyFace = (imageBlob) => {
 
 /**
  * POST /api/face/register
- * @param {string} employeeId
- * @param {Blob} imageBlob
+ * @param {string} employeeId — UUID
+ * @param {Blob}   imageBlob  — JPEG/PNG captured from webcam
  */
 export const registerFace = (employeeId, imageBlob) => {
   const formData = new FormData()
+  formData.append('employeeId', employeeId)
   formData.append('image', imageBlob, 'register.jpg')
-  return api.post('/face/register', formData, {
-    params: { employeeId },
-    timeout: FACE_TIMEOUT,
-  })
+  return api.post('/face/register', formData, { timeout: FACE_TIMEOUT })
 }
+
+/**
+ * GET /api/face/employee/:employeeId/status
+ * Returns { employeeId, embeddingCount, registered, lastRegisteredAt }
+ */
+export const getFaceStatus = (employeeId) =>
+  api.get(`/face/employee/${employeeId}/status`)

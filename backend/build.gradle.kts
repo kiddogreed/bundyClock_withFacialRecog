@@ -43,6 +43,14 @@ dependencies {
     // OpenAPI / Swagger
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0")
 
+    // WebClient (reactive HTTP client for non-blocking face-service calls)
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
+
+    // JWT — io.jsonwebtoken 0.12.x
+    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")

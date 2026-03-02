@@ -2,6 +2,7 @@ package com.bundyclock.domain.attendance;
 
 import com.bundyclock.common.exception.ResourceNotFoundException;
 import com.bundyclock.config.SecurityConfig;
+import com.bundyclock.auth.JwtService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,9 @@ class AttendanceControllerTest {
 
     @MockBean
     private AttendanceService attendanceService;
+
+    @MockBean
+    private JwtService jwtService;
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -159,11 +163,11 @@ class AttendanceControllerTest {
     class GetAllLogs {
 
         @Test
-        @DisplayName("returns 200 with all attendance logs")
+        @DisplayName("returns 200 with all attendance logs when no params supplied")
         void returnsAllLogs() throws Exception {
             UUID emp1 = UUID.randomUUID();
             UUID emp2 = UUID.randomUUID();
-            when(attendanceService.getAllLogs()).thenReturn(List.of(
+            when(attendanceService.getLogs(any(), any(), any())).thenReturn(List.of(
                     sampleLog(emp1, AttendanceLog.AttendanceType.TIME_IN),
                     sampleLog(emp2, AttendanceLog.AttendanceType.TIME_OUT)
             ));
@@ -177,7 +181,7 @@ class AttendanceControllerTest {
         @Test
         @DisplayName("returns 200 with empty list when no logs exist")
         void returnsEmptyList() throws Exception {
-            when(attendanceService.getAllLogs()).thenReturn(List.of());
+            when(attendanceService.getLogs(any(), any(), any())).thenReturn(List.of());
 
             mockMvc.perform(get("/api/attendance"))
                     .andExpect(status().isOk())

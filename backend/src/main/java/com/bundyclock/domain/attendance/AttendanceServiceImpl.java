@@ -73,4 +73,24 @@ public class AttendanceServiceImpl implements AttendanceService {
     public List<AttendanceLog> getAllLogs() {
         return attendanceLogRepository.findAll();
     }
+
+    @Override
+    public List<AttendanceLog> getLogs(UUID employeeId, ZonedDateTime from, ZonedDateTime to) {
+        boolean hasEmployee = employeeId != null;
+        boolean hasRange    = from != null && to != null;
+
+        if (hasEmployee && hasRange) {
+            return attendanceLogRepository
+                .findByEmployeeIdAndTimestampBetweenOrderByTimestampDesc(employeeId, from, to);
+        }
+        if (hasRange) {
+            return attendanceLogRepository
+                .findByTimestampBetweenOrderByTimestampDesc(from, to);
+        }
+        if (hasEmployee) {
+            return attendanceLogRepository
+                .findByEmployeeIdOrderByTimestampDesc(employeeId);
+        }
+        return attendanceLogRepository.findAll();
+    }
 }

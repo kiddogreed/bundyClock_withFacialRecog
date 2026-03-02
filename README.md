@@ -125,6 +125,8 @@ bundyclock/
 │
 ├── start.bat                        ← one-command launcher (Windows)
 ├── start.sh                         ← one-command launcher (Git Bash / macOS / Linux)
+├── stop.bat                         ← one-command terminator (Windows)
+├── stop.sh                          ← one-command terminator (Git Bash / macOS / Linux)
 └── bundyclock-postman-collection.json
 └── CHANGELOG.md
 ```
@@ -241,6 +243,26 @@ After launch, the following URLs will be available:
 | Frontend | http://localhost:5173 |
 | Backend API | http://localhost:8080 |
 | Face Service | http://localhost:5001 |
+
+---
+
+### Stop All Services — one command
+
+Kills any process running on ports 8080, 5001, and 5173.
+
+**Windows:**
+
+```bat
+stop.bat
+```
+
+**Git Bash / macOS / Linux:**
+
+```bash
+./stop.sh
+```
+
+> `start.bat` / `start.sh` also clears these ports automatically before launching, so re-running the start script is sufficient for a clean restart.
 
 ---
 

@@ -17,6 +17,8 @@ import java.util.UUID;
 @Builder
 public class Employee {
 
+    public enum EmployeeStatus { ACTIVE, ON_LEAVE, RESIGNED }
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -35,6 +37,11 @@ public class Employee {
 
     @Column(name = "photo_url")
     private String photoUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(nullable = false, length = 20)
+    private EmployeeStatus status = EmployeeStatus.ACTIVE;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

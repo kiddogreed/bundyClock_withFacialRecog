@@ -12,6 +12,9 @@ spring:
     enabled: false
 
 app:
+  jwt:
+    secret: testSecretKey4BundyClockJwtHs256Min32CharsLongForTests!
+    expiration-ms: 86400000
   face-recognition:
     service-url: http://localhost:5001
     verify-endpoint: /verify-face

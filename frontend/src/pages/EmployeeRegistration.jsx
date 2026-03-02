@@ -5,8 +5,9 @@ import {
 } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 import WebcamCapture from '../components/WebcamCapture'
-import { createEmployee } from '../api/employees'
+import { createEmployee, uploadEmployeePhoto } from '../api/employees'
 import { registerFace } from '../api/face'
+import { getErrorMessage } from '../api/axiosClient'
 import { useAppContext } from '../context/AppContext'
 
 const EMPTY_FORM = { name: '', employeeCode: '', department: '', email: '' }
@@ -31,14 +32,17 @@ export default function EmployeeRegistration() {
       const employeeId = empRes.data.data.id
 
       if (faceBlob) {
-        await registerFace(employeeId, faceBlob)
+        await Promise.all([
+          registerFace(employeeId, faceBlob),
+          uploadEmployeePhoto(employeeId, faceBlob),
+        ])
         showSnackbar('Employee and face registered successfully!', 'success')
       } else {
         showSnackbar('Employee registered (no face image)', 'success')
       }
       navigate('/employees')
     } catch (err) {
-      setError(err.response?.data?.message ?? 'Registration failed. Please try again.')
+      setError(getErrorMessage(err, 'Registration failed. Please try again.'))
     } finally {
       setLoading(false)
     }

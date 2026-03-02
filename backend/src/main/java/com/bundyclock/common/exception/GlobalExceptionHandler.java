@@ -2,6 +2,7 @@ package com.bundyclock.common.exception;
 
 import com.bundyclock.common.dto.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -43,6 +44,24 @@ public class GlobalExceptionHandler {
         log.warn("Illegal argument: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        String msg = ex.getMostSpecificCause().getMessage();
+        String friendly;
+        if (msg != null && msg.contains("employee_code")) {
+            friendly = "Employee code already exists. Please use a different employee code.";
+        } else if (msg != null && msg.contains("email")) {
+            friendly = "Email address already in use. Please use a different email.";
+        } else if (msg != null && (msg.contains("foreign key") || msg.contains("fkey") || msg.contains("not present in table"))) {
+            friendly = "The employee linked to this face scan no longer exists in the system. Please re-register the employee's face.";
+        } else {
+            friendly = "A record with the same unique value already exists.";
+        }
+        log.warn("Data integrity violation: {}", msg);
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiResponse.error(friendly));
     }
 
     @ExceptionHandler(IllegalStateException.class)

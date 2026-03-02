@@ -42,6 +42,9 @@ springdoc:
     enabled: true
 
 app:
+  jwt:
+    secret: bC2026SecretKey4BundyClockJwtHs256Min32CharsLongSecure!
+    expiration-ms: 86400000  # 24 hours
   face-recognition:
     service-url: http://localhost:5001
     verify-endpoint: /verify-face

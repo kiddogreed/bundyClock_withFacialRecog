@@ -43,6 +43,18 @@ PIDS+=($!)
 # 2. Face Recognition Service
 echo -e "${GREEN}[2/3] Starting Face Recognition Service (Python - port 5001)...${NC}"
 cd "$SCRIPT_DIR/face-recognition-service"
+if [[ -f ".venv/Scripts/activate" ]]; then
+    # Windows / Git Bash venv
+    source .venv/Scripts/activate
+    echo -e "${GREEN}  Activated .venv (Windows)${NC}"
+elif [[ -f ".venv/bin/activate" ]]; then
+    # macOS / Linux venv
+    source .venv/bin/activate
+    echo -e "${GREEN}  Activated .venv (Unix)${NC}"
+else
+    echo -e "${YELLOW}  ⚠ No .venv found in face-recognition-service/. Using system Python.${NC}"
+    echo -e "${YELLOW}    Create one with: python -m venv .venv && pip install -r requirements.txt${NC}"
+fi
 python run.py &
 PIDS+=($!)
 

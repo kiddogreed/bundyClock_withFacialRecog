@@ -3,6 +3,7 @@ package com.bundyclock.domain.employee;
 import com.bundyclock.common.exception.ResourceNotFoundException;
 import com.bundyclock.config.SecurityConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.bundyclock.auth.JwtService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -46,6 +49,9 @@ class EmployeeControllerTest {
     @MockBean
     private EmployeeService employeeService;
 
+    @MockBean
+    private JwtService jwtService;
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
@@ -69,27 +75,31 @@ class EmployeeControllerTest {
     class GetAllEmployees {
 
         @Test
-        @DisplayName("returns 200 with list of employees")
+        @DisplayName("returns 200 with paginated list of employees")
         void returnsAllEmployees() throws Exception {
             UUID id = UUID.randomUUID();
-            when(employeeService.getAllEmployees()).thenReturn(List.of(sampleEmployee(id)));
+            when(employeeService.getAllEmployees(any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(sampleEmployee(id))));
 
             mockMvc.perform(get("/api/employees"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.success").value(true))
-                    .andExpect(jsonPath("$.data", hasSize(1)))
-                    .andExpect(jsonPath("$.data[0].name").value("Alice Reyes"))
-                    .andExpect(jsonPath("$.data[0].employeeCode").value("EMP-001"));
+                    .andExpect(jsonPath("$.data.content", hasSize(1)))
+                    .andExpect(jsonPath("$.data.content[0].name").value("Alice Reyes"))
+                    .andExpect(jsonPath("$.data.content[0].employeeCode").value("EMP-001"))
+                    .andExpect(jsonPath("$.data.totalElements").value(1));
         }
 
         @Test
-        @DisplayName("returns 200 with empty list when no employees exist")
+        @DisplayName("returns 200 with empty page when no employees exist")
         void returnsEmptyList() throws Exception {
-            when(employeeService.getAllEmployees()).thenReturn(List.of());
+            when(employeeService.getAllEmployees(any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of()));
 
             mockMvc.perform(get("/api/employees"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data", hasSize(0)));
+                    .andExpect(jsonPath("$.data.content", hasSize(0)))
+                    .andExpect(jsonPath("$.data.totalElements").value(0));
         }
     }
 

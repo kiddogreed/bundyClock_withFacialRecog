@@ -13,6 +13,7 @@ import { timeIn, timeOut } from '../api/attendance'
 import { verifyFace } from '../api/face'
 import { getEmployees } from '../api/employees'
 import { useAppContext } from '../context/AppContext'
+import { getErrorMessage } from '../api/axiosClient'
 
 // status: 'idle' | 'verifying' | 'recording' | 'success' | 'error'
 export default function BundyClock() {
@@ -25,8 +26,10 @@ export default function BundyClock() {
   const [lastAction, setLastAction] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [now, setNow] = useState(new Date())
-  // autoActive: countdown runs when true, stops permanently after success
+  // autoActive: countdown runs when true, stops permanently after first success
   const [autoActive, setAutoActive] = useState(true)
+  // everSucceeded: set to true on first successful time-in/out; never resets — keeps mode manual for the session
+  const [everSucceeded, setEverSucceeded] = useState(false)
   // doneMode: locks the toggle button for the mode that already recorded successfully
   const [doneMode, setDoneMode] = useState(null)
   // scanKey: incrementing this remounts WebcamCapture to clear its internal capturedImage state
@@ -38,8 +41,8 @@ export default function BundyClock() {
   }, [])
 
   useEffect(() => {
-    getEmployees()
-      .then(res => setEmployees(res.data.data))
+    getEmployees(0, 200)  // load up to 200 employees for face-matching lookup
+      .then(res => setEmployees(res.data.data?.content ?? []))
       .catch(() => {})
   }, [])
 
@@ -58,7 +61,15 @@ export default function BundyClock() {
     try {
       // Step 1 — verify face identity
       const verifyRes = await verifyFace(blob)
-      const result = verifyRes.data.data  // { matched, employeeId, confidenceScore, message }
+      const result = verifyRes.data?.data
+
+      // Guard: unexpected response shape from the backend
+      if (!result || typeof result.matched === 'undefined') {
+        setStatus('error')
+        setErrorMsg('Unexpected response from the server. Please try again.')
+        console.error('[BundyClock] Unexpected verifyFace response shape:', verifyRes.data)
+        return
+      }
 
       if (!result.matched) {
         setStatus('error')
@@ -83,36 +94,49 @@ export default function BundyClock() {
         // to prevent an infinite retry loop where the same face keeps triggering the same error.
         setAutoActive(false)
         setStatus('error')
-        const msg = attendErr.response?.data?.message
-          ?? (attendErr.code === 'ECONNABORTED' ? 'Request timed out. Please try again.' : 'Failed to record attendance. Please try again.')
+        const msg = attendErr.friendlyMessage
+          ?? (attendErr.code === 'ECONNABORTED' ? 'Request timed out — server is busy, please try again.' : null)
+          ?? attendErr.response?.data?.message
+          ?? 'Failed to record attendance. Please try again.'
         setErrorMsg(msg)
         return
       }
       const actionTime = new Date()
       setLastAction({ type: mode, employee: emp, time: actionTime, log: attendRes.data.data })
       setStatus('success')
-      // Stop auto-capture and lock the completed mode's toggle button
+      // Stop auto-capture permanently and lock the completed mode's toggle button
       setAutoActive(false)
+      setEverSucceeded(true)
       setDoneMode(mode)
       showSnackbar(
         `${mode === 'TIME_IN' ? 'Time-In' : 'Time-Out'} recorded for ${emp?.name ?? 'employee'}!`,
         'success'
       )
     } catch (err) {
-      // Face verification / network errors — keep autoActive so the next person can try
+      // Face verification / network errors — keep autoActive true so the next person can try
+      console.error('[BundyClock] Face verification error:', err.message ?? err, err)
       setStatus('error')
-      const msg = err.code === 'ECONNABORTED'
-        ? 'Request timed out — face service is busy, please try again.'
-        : (err.response?.data?.message ?? 'Verification failed. Please try again.')
+      // TypeError (e.g. employees.find is not a function) means a JS bug — surface it clearly
+      if (err instanceof TypeError) {
+        setErrorMsg(`Internal error: ${err.message}. Please refresh the page.`)
+        setAutoActive(false)
+        return
+      }
+      const msg = err.friendlyMessage
+        ?? (err.code === 'ECONNABORTED'
+          ? 'Face service is taking too long — it may still be loading. Please try again in a moment.'
+          : null)
+        ?? (typeof err.response?.data === 'object' ? err.response?.data?.message : null)
+        ?? 'Face verification failed. Please try again.'
       setErrorMsg(msg)
     }
   }
 
-  // Reset everything and re-enable auto-capture
+  // Reset to idle for next scan — stays manual after any success; doneMode lock is permanent
   const handleScanAgain = useCallback(() => {
     resetToIdle()
-    setAutoActive(true)
-    setDoneMode(null)
+    // Never re-enable auto-capture once a successful time-in/out has been recorded
+    // doneMode intentionally NOT cleared — each mode can only be used once per session
     setScanKey(k => k + 1)  // remount WebcamCapture to clear frozen captured image
   }, [resetToIdle])
 
@@ -141,7 +165,8 @@ export default function BundyClock() {
             if (val && val !== doneMode) {
               setMode(val)
               resetToIdle()
-              setAutoActive(true)
+              // Only allow auto-capture if no successful record exists yet this session
+              setAutoActive(!everSucceeded)
               setScanKey(k => k + 1)  // fresh camera on mode switch
             }
           }}

@@ -15,4 +15,6 @@ public interface FaceEmbeddingRepository extends JpaRepository<FaceEmbedding, UU
     List<FaceEmbedding> findAllByEmployeeId(UUID employeeId);
 
     boolean existsByEmployeeId(UUID employeeId);
+
+    void deleteByEmployeeId(UUID employeeId);
 }

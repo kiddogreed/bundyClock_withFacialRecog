@@ -4,6 +4,10 @@ import com.bundyclock.common.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -11,7 +15,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -23,10 +26,13 @@ public class EmployeeController {
     private final EmployeeService employeeService;
 
     @GetMapping
-    @Operation(summary = "Get all employees")
-    public ResponseEntity<ApiResponse<List<Employee>>> getAllEmployees() {
-        List<Employee> employees = employeeService.getAllEmployees();
-        return ResponseEntity.ok(ApiResponse.ok(employees));
+    @Operation(summary = "Get paginated list of employees")
+    public ResponseEntity<ApiResponse<Page<Employee>>> getAllEmployees(
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+        Page<Employee> result = employeeService.getAllEmployees(pageable);
+        return ResponseEntity.ok(ApiResponse.ok(result));
     }
 
     @GetMapping("/{id}")

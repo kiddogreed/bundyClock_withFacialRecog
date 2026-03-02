@@ -1,6 +1,7 @@
 package com.bundyclock.domain.face;
 
 import com.bundyclock.config.SecurityConfig;
+import com.bundyclock.auth.JwtService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -13,11 +14,13 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -38,6 +41,9 @@ class FaceControllerTest {
 
     @MockBean
     private FaceService faceService;
+
+    @MockBean
+    private JwtService jwtService;
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -165,6 +171,53 @@ class FaceControllerTest {
                             .param("employeeId", employeeId.toString()))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.success").value(false));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/face/employee/{employeeId}/status
+    // -------------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("GET /api/face/employee/{employeeId}/status")
+    class GetFaceStatus {
+
+        @Test
+        @DisplayName("returns 200 with registration status for registered employee")
+        void returnsRegisteredStatus() throws Exception {
+            UUID employeeId = UUID.randomUUID();
+            FaceStatusResponse status = FaceStatusResponse.builder()
+                    .employeeId(employeeId)
+                    .embeddingCount(3)
+                    .registered(true)
+                    .lastRegisteredAt(ZonedDateTime.now())
+                    .build();
+            when(faceService.getFaceStatus(employeeId)).thenReturn(status);
+
+            mockMvc.perform(get("/api/face/employee/{employeeId}/status", employeeId))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(true))
+                    .andExpect(jsonPath("$.data.registered").value(true))
+                    .andExpect(jsonPath("$.data.embeddingCount").value(3))
+                    .andExpect(jsonPath("$.data.employeeId").value(employeeId.toString()));
+        }
+
+        @Test
+        @DisplayName("returns 200 with unregistered status for new employee")
+        void returnsUnregisteredStatus() throws Exception {
+            UUID employeeId = UUID.randomUUID();
+            FaceStatusResponse status = FaceStatusResponse.builder()
+                    .employeeId(employeeId)
+                    .embeddingCount(0)
+                    .registered(false)
+                    .lastRegisteredAt(null)
+                    .build();
+            when(faceService.getFaceStatus(employeeId)).thenReturn(status);
+
+            mockMvc.perform(get("/api/face/employee/{employeeId}/status", employeeId))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.registered").value(false))
+                    .andExpect(jsonPath("$.data.embeddingCount").value(0));
         }
     }
 }

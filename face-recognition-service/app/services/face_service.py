@@ -54,6 +54,27 @@ def _cosine_similarity(a: list, b: list) -> float:
     return float(np.dot(a_arr, b_arr) / denom)
 
 
+def delete_face_data(employee_id: str) -> dict:
+    """
+    Remove the embedding JSON file and all raw face images for the given employee.
+    """
+    deleted = []
+
+    # Delete embedding JSON
+    emb_path = Path(settings.EMBEDDINGS_DIR) / f"{employee_id}.json"
+    if emb_path.exists():
+        emb_path.unlink()
+        deleted.append(str(emb_path))
+
+    # Delete raw face images (pattern: {employee_id}_*.jpg)
+    for img in Path(settings.FACE_IMAGES_DIR).glob(f"{employee_id}_*.jpg"):
+        img.unlink()
+        deleted.append(str(img))
+
+    logger.info("Deleted face data for employee %s: %s", employee_id, deleted)
+    return {"employee_id": employee_id, "deleted_files": deleted}
+
+
 def register_face(employee_id: str, image_bytes: bytes) -> dict:
     """
     Save face image and compute embedding for the given employee.

@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import {
   Container, Grid, Typography, Button, Box,
-  CircularProgress, Alert, TextField, InputAdornment,
+  CircularProgress, Alert, TextField, InputAdornment, Pagination,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import { useNavigate } from 'react-router-dom'
 import EmployeeCard from '../components/EmployeeCard'
 import { getEmployees, deleteEmployee } from '../api/employees'
+import { getErrorMessage } from '../api/axiosClient'
 import { useAppContext } from '../context/AppContext'
+
+const PAGE_SIZE = 12
 
 export default function EmployeeList() {
   const { showSnackbar } = useAppContext()
@@ -18,20 +21,25 @@ export default function EmployeeList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)          // 0-based (Spring)
+  const [totalPages, setTotalPages] = useState(1)
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = async (currentPage = page) => {
+    setLoading(true)
     try {
-      const res = await getEmployees()
-      setEmployees(res.data.data)
-      setFiltered(res.data.data)
-    } catch {
-      setError('Failed to load employees.')
+      const res = await getEmployees(currentPage, PAGE_SIZE)
+      const pageData = res.data.data
+      setEmployees(pageData.content)
+      setFiltered(pageData.content)
+      setTotalPages(pageData.totalPages || 1)
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load employees.'))
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchEmployees() }, [])
+  useEffect(() => { fetchEmployees(page) }, [page])
 
   useEffect(() => {
     const q = search.toLowerCase()
@@ -46,10 +54,15 @@ export default function EmployeeList() {
     try {
       await deleteEmployee(id)
       showSnackbar('Employee deleted', 'success')
-      fetchEmployees()
+      fetchEmployees(page)
     } catch {
       showSnackbar('Delete failed', 'error')
     }
+  }
+
+  const handlePageChange = (_, value) => {
+    setSearch('')
+    setPage(value - 1)  // MUI Pagination is 1-based; Spring is 0-based
   }
 
   if (loading) return <Box display="flex" justifyContent="center" mt={8}><CircularProgress /></Box>
@@ -68,7 +81,7 @@ export default function EmployeeList() {
       </Box>
 
       <TextField
-        placeholder="Search by name or code…"
+        placeholder="Search by name or code on this page…"
         fullWidth
         size="small"
         sx={{ mb: 3 }}
@@ -91,6 +104,18 @@ export default function EmployeeList() {
           </Grid>
         )}
       </Grid>
+
+      {totalPages > 1 && (
+        <Box display="flex" justifyContent="center" mt={4}>
+          <Pagination
+            count={totalPages}
+            page={page + 1}
+            onChange={handlePageChange}
+            color="primary"
+            shape="rounded"
+          />
+        </Box>
+      )}
     </Container>
   )
 }

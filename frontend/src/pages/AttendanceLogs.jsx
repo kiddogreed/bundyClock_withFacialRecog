@@ -7,6 +7,7 @@ import {
 } from '@mui/material'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getAllLogs } from '../api/attendance'
+import { getErrorMessage } from '../api/axiosClient'
 
 const TYPE_COLOR = { TIME_IN: 'success', TIME_OUT: 'error' }
 
@@ -23,8 +24,8 @@ export default function AttendanceLogs() {
     try {
       const res = await getAllLogs()
       setLogs(res.data.data)
-    } catch {
-      setError('Failed to load attendance logs.')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load attendance logs.'))
     } finally {
       setLoading(false)
     }
