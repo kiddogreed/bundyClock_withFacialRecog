@@ -12,6 +12,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.6.0] - 2026-03-02
+
+### Added
+- **One-command startup scripts — run all three services simultaneously**
+  - `start.bat` — Windows batch script; launches each service in its own terminal window (`start` command) so logs are visible independently. Double-click or run from any terminal.
+  - `start.sh` — Bash script for Git Bash / WSL / macOS / Linux; starts all three services as background jobs in the same shell. Pressing `Ctrl+C` triggers a `trap` that gracefully kills all child processes.
+  - Both scripts start services in the correct order:
+    1. Backend — `./gradlew bootRun` (port 8080)
+    2. Face Recognition Service — `python run.py` (port 5001)
+    3. Frontend — `npm run dev` (port 5173)
+  - Service URLs are printed to the console after all three are launched.
+
+- **README.md** — Section 5 "Running Everything Together" rewritten:
+  - New **Quick Start (one command)** subsection with `start.bat` and `start.sh` usage.
+  - Original three-terminal manual steps retained as a fallback reference.
+  - Folder structure updated to list `start.bat` and `start.sh` at the project root.
+
+---
+
 ## [0.5.0] - 2026-03-01
 
 ### Added

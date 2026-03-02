@@ -123,6 +123,8 @@ bundyclock/
 │       ├── test_face_router.py   ← router-level tests (all service calls mocked)
 │       └── test_face_service.py ← service unit tests (disk I/O + DeepFace mocked)
 │
+├── start.bat                        ← one-command launcher (Windows)
+├── start.sh                         ← one-command launcher (Git Bash / macOS / Linux)
 └── bundyclock-postman-collection.json
 └── CHANGELOG.md
 ```
@@ -211,26 +213,58 @@ python run.py
 
 ---
 
-## 5 · Running Everything Together (Git Bash)
+## 5 · Running Everything Together
 
-Open **three separate terminals** and run:
+### Quick Start — one command
+
+**Windows (Command Prompt or double-click):**
+
+```bat
+start.bat
+```
+
+Each service opens in its own terminal window so you can watch logs independently. Close individual windows to stop a service.
+
+**Git Bash / macOS / Linux:**
+
+```bash
+chmod +x start.sh   # first time only
+./start.sh
+```
+
+All three services stream logs to the same terminal. Press `Ctrl+C` to stop all services at once.
+
+After launch, the following URLs will be available:
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8080 |
+| Face Service | http://localhost:5001 |
+
+---
+
+### Manual startup (three terminals)
+
+Use this approach if you need to control each service individually or pass custom flags.
 
 ```bash
 # Terminal 1 — Backend
-cd /c/projects/2026/bundyclock/backend
+cd backend
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 
 # Terminal 2 — Frontend
-cd /c/projects/2026/bundyclock/frontend
+cd frontend
 npm install && npm run dev
 
 # Terminal 3 — Face Recognition Service
-cd /c/projects/2026/bundyclock/face-recognition-service
-source .venv/Scripts/activate
+cd face-recognition-service
+source .venv/Scripts/activate   # Git Bash on Windows
+source .venv/bin/activate        # macOS / Linux
 python run.py
 ```
 
-### Stopping & restarting (Git Bash)
+### Stopping services (Git Bash)
 
 ```bash
 # Kill processes on all service ports
