@@ -33,9 +33,11 @@ bundyclock/
 │       │   ├── java/com/bundyclock/
 │       │   │   ├── BundyClockApplication.java
 │       │   │   ├── auth/
-│       │   │   │   └── AuthController.java
+│       │   │   │   ├── AuthController.java
+│       │   │   │   ├── JwtAuthenticationFilter.java
+│       │   │   │   └── JwtService.java
 │       │   │   ├── config/
-│       │   │   │   ├── AppConfig.java          ← RestTemplate bean
+│       │   │   │   ├── AppConfig.java          ← WebClient bean + HTTP timeouts
 │       │   │   │   ├── CorsConfig.java         ← PATCH added to allowed methods
 │       │   │   │   ├── OpenApiConfig.java
 │       │   │   │   ├── SecurityConfig.java
@@ -64,15 +66,25 @@ bundyclock/
 │       │   │           ├── FaceController.java
 │       │   │           ├── FaceEmbeddingRepository.java
 │       │   │           ├── FaceService.java
-│       │   │           ├── FaceServiceImpl.java        ← real HTTP calls
+│       │   │           ├── FaceServiceImpl.java        ← WebClient + HTTP calls
+│       │   │           ├── FaceStatusResponse.java
 │       │   │           └── FaceVerifyResult.java
 │       │   └── resources/
 │       │       ├── application.yml
 │       │       ├── application-dev.yml
 │       │       └── db/migration/
-│       │           └── V1__create_initial_tables.sql
+│       │           ├── V1__create_initial_tables.sql
+│       │           ├── V2__add_photo_url_to_employees.sql
+│       │           └── V3__add_status_to_employees.sql
 │       └── test/
-│           ├── java/.../BundyClockApplicationTests.java
+│           ├── java/com/bundyclock/
+│           │   ├── BundyClockApplicationTests.java
+│           │   ├── auth/
+│           │   │   └── AuthControllerTest.java
+│           │   └── domain/
+│           │       ├── attendance/AttendanceControllerTest.java
+│           │       ├── employee/EmployeeControllerTest.java
+│           │       └── face/FaceControllerTest.java
 │           └── resources/application.yml               ← H2 + app props
 │
 ├── frontend/                        ← React + Vite + MUI
@@ -141,7 +153,7 @@ bundyclock/
 | Gradle | 8.x | Bundled via wrapper (`./gradlew`) |
 | PostgreSQL | 15+ | [psql](https://www.postgresql.org/download/windows/) |
 | Node.js | 20 LTS | [nodejs.org](https://nodejs.org) |
-| Python | 3.10 – 3.12 | [python.org](https://python.org) |
+| Python | 3.10+ | [python.org](https://python.org) |
 | Git Bash | Any | Recommended terminal on Windows |
 
 ---
@@ -310,8 +322,9 @@ Controller-layer tests use `@WebMvcTest` + Mockito mocks. No database or externa
 |---|---|---|
 | `EmployeeControllerTest` | `GET/POST/PUT/DELETE /api/employees`, `PATCH /{id}/photo` | 12 |
 | `AttendanceControllerTest` | `POST time-in/out`, `GET /api/attendance` | 8 |
-| `FaceControllerTest` | `POST /api/face/verify` + `/register` | 6 |
+| `FaceControllerTest` | `POST /api/face/verify`, `/register`, `GET /employee/{id}/status` | 8 |
 | `AuthControllerTest` | `POST /api/auth/login` | 3 |
+| `BundyClockApplicationTests` | Spring context load | 1 |
 
 #### Running backend tests
 
@@ -496,7 +509,7 @@ Use these credentials and sample employee profiles to explore the system without
 | Username | `admin` |
 | Password | `admin123` |
 
-> The admin account is used for the `/api/auth/login` endpoint. It returns a stub JWT token that is accepted by all secured endpoints.
+> The admin account is authenticated via Spring Security (`InMemoryUserDetailsManager`). On success, `/api/auth/login` returns a signed HS-256 JWT. All secured endpoints require an `Authorization: Bearer <token>` header.
 
 ---
 
@@ -565,10 +578,11 @@ These employee records can be created via `POST /api/employees` (or imported thr
 | `DELETE`| `/api/employees/{id}` | Delete employee |
 | `POST` | `/api/attendance/time-in` | Record Time-In (with duplicate guard) |
 | `POST` | `/api/attendance/time-out` | Record Time-Out (with duplicate guard) |
-| `GET` | `/api/attendance` | All attendance logs |
+| `GET` | `/api/attendance` | Attendance logs (optional: `employeeId`, `from`, `to` ISO params) |
 | `GET` | `/api/attendance/employee/{id}` | Logs for one employee |
 | `POST` | `/api/face/verify` | Verify face (proxies to face-svc) |
 | `POST` | `/api/face/register` | Register face (proxies to face-svc) |
+| `GET` | `/api/face/employee/{id}/status` | Face registration status (embedding count, last registered) |
 
 ### Face Recognition Service (`:5001`)
 
@@ -592,8 +606,9 @@ These employee records can be created via `POST /api/employees` (or imported thr
 │ department   │        │ type (IN/OUT)     │  │    │ model_used         │
 │ email        │        │ image_path        │  │    │ created_at         │
 │ photo_url    │  ┌────►│ confidence_score  │  └────┤                    │
-│ created_at   │  │     │ verified          │       └────────────────────┘
-│ updated_at   │  │     │ notes             │
+│ status       │  │     │ verified          │       └────────────────────┘
+│ created_at   │  │     │ notes             │
+│ updated_at   │  │
                   │     └───────────────────┘
                   │
            (same FK pattern)
@@ -608,7 +623,7 @@ Embeddings on disk (face-recognition-service/data/embeddings/):
 ## 13 · Production Hardening Notes
 
 ### Security
-- [ ] Replace placeholder JWT with real Spring Security JWT filter chain (`jjwt` or `nimbus-jose-jwt`)
+- [x] ~~Replace placeholder JWT with real Spring Security JWT filter chain~~ — **Done v0.7.0** (HS-256 jjwt, `JwtService` + `JwtAuthenticationFilter`)
 - [ ] Add role-based access control (`ADMIN`, `EMPLOYEE`, `KIOSK` roles)
 - [ ] Enable HTTPS (TLS) with Let's Encrypt or a reverse proxy (nginx/caddy)
 - [ ] Secrets management via AWS Secrets Manager, Azure Key Vault, or Vault by HashiCorp
@@ -642,8 +657,8 @@ Embeddings on disk (face-recognition-service/data/embeddings/):
 
 ## 14 · Known MVP Limitations
 
-1. JWT authentication returns a **stub token** — not validated by the backend.
+1. ~~JWT authentication returns a **stub token** — not validated by the backend.~~ **Fixed v0.7.0.**
 2. Image storage is **local filesystem** — will not work in stateless/containerised environments without a volume or object store.
-3. No pagination on list endpoints.
+3. ~~No pagination on list endpoints.~~ **Fixed v0.7.0** — `GET /api/employees` returns `Page<Employee>` with `page` + `size` params.
 4. Face embeddings comparison is O(n × k) linear scan — use `pgvector` for scale.
 5. DeepFace model weights (~580 MB) are downloaded on first run; ensure internet access on first start.

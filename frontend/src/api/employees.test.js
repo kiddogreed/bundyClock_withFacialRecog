@@ -46,10 +46,10 @@ describe('employees API', () => {
 
   // ── getEmployees ─────────────────────────────────────────────────────────
   describe('getEmployees', () => {
-    it('calls GET /employees', async () => {
+    it('calls GET /employees with default page and size params', async () => {
       api.get.mockReturnValue(ok([mockEmployee]))
       await getEmployees()
-      expect(api.get).toHaveBeenCalledWith('/employees')
+      expect(api.get).toHaveBeenCalledWith('/employees', { params: { page: 0, size: 20 } })
     })
 
     it('returns the axios response', async () => {

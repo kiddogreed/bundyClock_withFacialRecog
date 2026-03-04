@@ -58,14 +58,16 @@ class TestCosineSimilarity:
 # ── _get_embedding ────────────────────────────────────────────────────────────
 class TestGetEmbedding:
     def test_returns_embedding_list_on_success(self):
-        mock_represent = [{"embedding": FAKE_EMBEDDING}]
-        with patch("app.services.face_service.DeepFace") as mock_deepface:
-            from deepface import DeepFace  # noqa — just triggering lazy import path
-        # Patch the lazy-imported DeepFace inside the module
-        with patch("app.services.face_service._get_embedding", return_value=FAKE_EMBEDDING) as mock_fn:
-            result = face_service._get_embedding.__wrapped__("fake/path.jpg") \
-                if hasattr(face_service._get_embedding, "__wrapped__") \
-                else mock_fn("fake/path.jpg")
+        """_get_embedding returns the embedding vector when DeepFace succeeds.
+
+        deepface.DeepFace is a sub-module (not a class), so it must be explicitly
+        imported first to enter sys.modules; then patch.object replaces its
+        `represent` callable for the duration of the test.
+        """
+        import deepface.DeepFace as df_module  # ensure sub-module is in sys.modules
+        mock_result = [{"embedding": FAKE_EMBEDDING}]
+        with patch.object(df_module, "represent", return_value=mock_result):
+            result = face_service._get_embedding("fake/path.jpg")
         assert result == FAKE_EMBEDDING
 
     def test_returns_none_when_deepface_raises(self):
@@ -201,8 +203,9 @@ class TestVerifyFace:
         stored = [0.9] * 512
         self._write_embedding(emb_dir, EMPLOYEE_ID, [stored])
 
-        # Query embedding: orthogonal to stored → very low similarity
-        query = [0.0] * 256 + [1.0] * 256
+        # Query embedding: truly orthogonal to stored → cosine similarity = 0.
+        # dot([0.9]*512, [1.0]*256 + [-1.0]*256) = 256*0.9 - 256*0.9 = 0
+        query = [1.0] * 256 + [-1.0] * 256
         with patch("app.services.face_service._get_embedding", return_value=query):
             result = face_service.verify_face(DUMMY_IMAGE_BYTES)
 

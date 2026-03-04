@@ -12,6 +12,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.8.1] - 2026-03-04
+
+### Fixed
+
+- **Backend — `AuthControllerTest.java` duplicate class body caused compile failure**
+  - The file contained the old stub test class body (orphaned fields + nested `Login` class) appended after the correct closing brace of the rewritten class.
+  - Removed the duplicate block; the file now contains exactly one top-level class declaration.
+
+- **Backend — `GET /api/employees/{id}/photo` missing file returns 500 instead of 400**
+  - `GlobalExceptionHandler` had no handler for `MissingServletRequestPartException` (thrown when a required `@RequestParam MultipartFile` is absent from a multipart request); the generic `Exception` handler caught it and returned 500.
+  - Added `@ExceptionHandler(MissingServletRequestPartException.class)` → 400 Bad Request.
+  - Also added `@ExceptionHandler(MissingServletRequestParameterException.class)` → 400 for completeness (regular missing query/body params).
+
+- **Frontend — `getEmployees` test stale after pagination was added (v0.7.0)**
+  - `employees.test.js` expected `api.get('/employees')` with no params, but `getEmployees()` now passes `{ params: { page: 0, size: 20 } }` for the paginated Spring endpoint.
+  - Updated assertion to `toHaveBeenCalledWith('/employees', { params: { page: 0, size: 20 } })`.
+
+- **Python — `test_returns_embedding_list_on_success` tried to patch non-existent module attribute**
+  - `patch("app.services.face_service.DeepFace")` failed because `DeepFace` is lazily imported inside `_get_embedding` and is never assigned at module scope.
+  - `deepface.DeepFace` is itself a sub-module, not a class, so `patch("deepface.DeepFace")` also fails if the sub-module isn't already in `sys.modules`.
+  - Fixed: import `deepface.DeepFace` explicitly first (ensures it enters `sys.modules`), then use `patch.object(df_module, "represent", return_value=mock_result)` to replace the callable for the duration of the test.
+
+- **Python — `test_does_not_match_when_below_threshold` vector choice exceeded threshold**
+  - Query `[0.0]*256 + [1.0]*256` has cosine similarity ≈ 0.707 with stored `[0.9]*512`, which is above the configured `CONFIDENCE_THRESHOLD = 0.6`, so the result was `matched=True` (opposite of the test's expectation).
+  - Replaced with `[1.0]*256 + [-1.0]*256`, which is truly orthogonal to any all-same-sign vector: dot product = 256×0.9 − 256×0.9 = 0, cosine similarity = 0.
+
+---
+
 ## [0.8.0] - 2026-03-02
 
 ### Fixed
