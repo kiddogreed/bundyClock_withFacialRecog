@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, CardContent, CircularProgress,
   Container, Divider, Grid, IconButton, TextField, Tooltip,
-  Typography, Alert, Chip,
+  Typography, Alert, Chip, FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EditIcon from '@mui/icons-material/Edit'
@@ -11,7 +11,9 @@ import SaveIcon from '@mui/icons-material/Save'
 import CameraAltIcon from '@mui/icons-material/CameraAlt'
 import FaceIcon from '@mui/icons-material/Face'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import ScheduleIcon from '@mui/icons-material/Schedule'
 import { getEmployee, updateEmployee, uploadEmployeePhoto } from '../api/employees'
+import { getShifts } from '../api/shifts'
 import { getFaceStatus } from '../api/face'
 import { getErrorMessage } from '../api/axiosClient'
 import { useAppContext } from '../context/AppContext'
@@ -23,7 +25,11 @@ export default function EmployeeProfile() {
   const photoInputRef = useRef(null)
 
   const [employee, setEmployee] = useState(null)
-  const [form, setForm] = useState({ name: '', employeeCode: '', department: '', email: '' })
+  const [form, setForm] = useState({
+    name: '', employeeCode: '', department: '', email: '',
+    shiftScheduleId: null, customShiftStart: '', customShiftEnd: '',
+    _shiftSelectValue: '',
+  })
   const [editing, setEditing] = useState(false)
   const [savingInfo, setSavingInfo] = useState(false)
   const [savingPhoto, setSavingPhoto] = useState(false)
@@ -32,17 +38,38 @@ export default function EmployeeProfile() {
   const [photoPreview, setPhotoPreview] = useState(null)
   const [photoBlob, setPhotoBlob] = useState(null)
   const [faceStatus, setFaceStatus] = useState(null)
+  const [shifts, setShifts] = useState([])
+
+  /** Returns the display label for the employee's current shift. */
+  const shiftLabel = (emp) => {
+    if (!emp) return null
+    if (emp.shiftScheduleId) {
+      const s = shifts.find(x => x.id === emp.shiftScheduleId)
+      return s ? `${s.name} (${s.startTime} – ${s.endTime})` : emp.shiftScheduleId
+    }
+    if (emp.customShiftStart && emp.customShiftEnd) {
+      return `Custom: ${emp.customShiftStart} – ${emp.customShiftEnd}`
+    }
+    return 'No shift assigned'
+  }
 
   const fetchEmployee = async () => {
     try {
       const res = await getEmployee(id)
       const emp = res.data.data
       setEmployee(emp)
+      const selectValue = emp.shiftScheduleId
+        ? emp.shiftScheduleId
+        : (emp.customShiftStart ? 'CUSTOM' : '')
       setForm({
         name: emp.name ?? '',
         employeeCode: emp.employeeCode ?? '',
         department: emp.department ?? '',
         email: emp.email ?? '',
+        shiftScheduleId: emp.shiftScheduleId ?? null,
+        customShiftStart: emp.customShiftStart?.slice(0, 5) ?? '',
+        customShiftEnd:   emp.customShiftEnd?.slice(0, 5) ?? '',
+        _shiftSelectValue: selectValue,
       })
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to load employee details.'))
@@ -63,15 +90,40 @@ export default function EmployeeProfile() {
   useEffect(() => {
     fetchEmployee()
     fetchFaceStatus()
+    getShifts()
+      .then(res => setShifts(res.data.data ?? []))
+      .catch(() => {/* non-critical */})
   }, [id])
 
   const handleChange = (e) =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
 
+  const handleShiftChange = (e) => {
+    const val = e.target.value
+    setForm(prev => ({
+      ...prev,
+      shiftScheduleId: val === 'CUSTOM' || val === '' ? null : val,
+      customShiftStart: val === 'CUSTOM' ? prev.customShiftStart : '',
+      customShiftEnd:   val === 'CUSTOM' ? prev.customShiftEnd   : '',
+      _shiftSelectValue: val,
+    }))
+  }
+
+  const isCustomShift = form._shiftSelectValue === 'CUSTOM'
+
   const handleSaveInfo = async () => {
     setSavingInfo(true)
     try {
-      const res = await updateEmployee(id, form)
+      const payload = {
+        name: form.name,
+        employeeCode: form.employeeCode,
+        department: form.department,
+        email: form.email,
+        shiftScheduleId: form.shiftScheduleId ?? null,
+        customShiftStart: isCustomShift ? (form.customShiftStart || null) : null,
+        customShiftEnd:   isCustomShift ? (form.customShiftEnd   || null) : null,
+      }
+      const res = await updateEmployee(id, payload)
       setEmployee(res.data.data)
       setEditing(false)
       showSnackbar('Employee details updated', 'success')
@@ -321,6 +373,73 @@ export default function EmployeeProfile() {
                     InputProps={{ readOnly: !editing }}
                   />
                 </Grid>
+
+                {/* Shift Schedule */}
+                <Grid item xs={12}>
+                  <Divider sx={{ my: 1 }} />
+                  <Box display="flex" alignItems="center" gap={0.5} mb={1}>
+                    <ScheduleIcon fontSize="small" color="action" />
+                    <Typography variant="body2" fontWeight={600}>Shift Schedule</Typography>
+                  </Box>
+
+                  {!editing ? (
+                    <Typography variant="body2" color="text.secondary">
+                      {shiftLabel(employee)}
+                    </Typography>
+                  ) : (
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={4}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Shift</InputLabel>
+                          <Select
+                            label="Shift"
+                            value={form._shiftSelectValue ?? ''}
+                            onChange={handleShiftChange}
+                          >
+                            <MenuItem value=""><em>No shift assigned</em></MenuItem>
+                            {shifts.map(s => (
+                              <MenuItem key={s.id} value={s.id}>
+                                {s.name} ({s.startTime} – {s.endTime})
+                              </MenuItem>
+                            ))}
+                            <MenuItem value="CUSTOM">Custom shift…</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+
+                      {isCustomShift && (
+                        <>
+                          <Grid item xs={12} sm={4}>
+                            <TextField
+                              label="Shift Start"
+                              name="customShiftStart"
+                              type="time"
+                              fullWidth
+                              size="small"
+                              value={form.customShiftStart}
+                              onChange={handleChange}
+                              InputLabelProps={{ shrink: true }}
+                              inputProps={{ step: 300 }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <TextField
+                              label="Shift End"
+                              name="customShiftEnd"
+                              type="time"
+                              fullWidth
+                              size="small"
+                              value={form.customShiftEnd}
+                              onChange={handleChange}
+                              InputLabelProps={{ shrink: true }}
+                              inputProps={{ step: 300 }}
+                            />
+                          </Grid>
+                        </>
+                      )}
+                    </Grid>
+                  )}
+                </Grid>
               </Grid>
 
               {editing && (
@@ -329,11 +448,18 @@ export default function EmployeeProfile() {
                     variant="outlined"
                     onClick={() => {
                       setEditing(false)
+                      const selectValue = employee.shiftScheduleId
+                        ? employee.shiftScheduleId
+                        : (employee.customShiftStart ? 'CUSTOM' : '')
                       setForm({
                         name: employee.name ?? '',
                         employeeCode: employee.employeeCode ?? '',
                         department: employee.department ?? '',
                         email: employee.email ?? '',
+                        shiftScheduleId: employee.shiftScheduleId ?? null,
+                        customShiftStart: employee.customShiftStart?.slice(0, 5) ?? '',
+                        customShiftEnd:   employee.customShiftEnd?.slice(0, 5) ?? '',
+                        _shiftSelectValue: selectValue,
                       })
                     }}
                   >

@@ -51,6 +51,9 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (employee.getStatus() != null) {
             existing.setStatus(employee.getStatus());
         }
+        existing.setShiftScheduleId(employee.getShiftScheduleId());
+        existing.setCustomShiftStart(employee.getCustomShiftStart());
+        existing.setCustomShiftEnd(employee.getCustomShiftEnd());
         return employeeRepository.save(existing);
     }
 

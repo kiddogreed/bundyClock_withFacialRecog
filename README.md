@@ -50,7 +50,7 @@ bundyclock/
 │       │   │   │       └── ResourceNotFoundException.java
 │       │   │   └── domain/
 │       │   │       ├── employee/
-│       │   │       │   ├── Employee.java
+│       │   │       │   ├── Employee.java           ← shift fields added
 │       │   │       │   ├── EmployeeController.java
 │       │   │       │   ├── EmployeeRepository.java
 │       │   │       │   ├── EmployeeService.java
@@ -60,7 +60,11 @@ bundyclock/
 │       │   │       │   ├── AttendanceController.java
 │       │   │       │   ├── AttendanceLogRepository.java
 │       │   │       │   ├── AttendanceService.java
-│       │   │       │   └── AttendanceServiceImpl.java ← duplicate guard
+│       │   │       │   └── AttendanceServiceImpl.java ← duplicate + shift guard
+│       │   │       ├── shift/
+│       │   │       │   ├── ShiftSchedule.java
+│       │   │       │   ├── ShiftScheduleController.java
+│       │   │       │   └── ShiftScheduleRepository.java
 │       │   │       └── face/
 │       │   │           ├── FaceEmbedding.java
 │       │   │           ├── FaceController.java
@@ -75,7 +79,8 @@ bundyclock/
 │       │       └── db/migration/
 │       │           ├── V1__create_initial_tables.sql
 │       │           ├── V2__add_photo_url_to_employees.sql
-│       │           └── V3__add_status_to_employees.sql
+│       │           ├── V3__add_status_to_employees.sql
+│       │           └── V4__add_shift_schedules.sql
 │       └── test/
 │           ├── java/com/bundyclock/
 │           │   ├── BundyClockApplicationTests.java
@@ -101,7 +106,8 @@ bundyclock/
 │       │   ├── auth.js
 │       │   ├── employees.js
 │       │   ├── attendance.js
-│       │   └── face.js
+│       │   ├── face.js
+│       │   └── shifts.js
 │       ├── components/
 │       │   ├── WebcamCapture.jsx   ← autoCapture countdown mode
 │       │   ├── EmployeeCard.jsx    ← Register Face button
@@ -109,8 +115,8 @@ bundyclock/
 │       └── pages/
 │           ├── Login.jsx
 │           ├── EmployeeList.jsx
-│           ├── EmployeeRegistration.jsx
-│           ├── EmployeeProfile.jsx         ← new: view/edit profile + upload photo
+│           ├── EmployeeRegistration.jsx    ← shift schedule selector added
+│           ├── EmployeeProfile.jsx         ← view/edit profile + upload photo + shift
 │           ├── BundyClock.jsx              ← auto face scan; freezes camera after success
 │           ├── FaceRegistration.jsx        ← auto-stops after first capture; sets profile photo
 │           └── AttendanceLogs.jsx
@@ -481,6 +487,9 @@ Before employees can use the BundyClock, their face must be registered:
 | Employee already timed in today and tries to time in again | `409` — "Already timed in today. Please time out first." |
 | Employee tries to time out with no time-in record today | `409` — "Cannot time out — no time-in record found for today." |
 | Employee already timed out today and tries again | `409` — "Already timed out today." |
+| Employee punches outside their shift window | `409` — "Outside shift hours. Your shift is HH:mm – HH:mm…" |
+
+> **Shift window:** attendance is allowed from **30 minutes before** shift start until **2 hours after** shift end. Overnight shifts (e.g. 22:00 – 06:00) are handled correctly. Employees with no shift assigned can punch at any time.
 
 ---
 
@@ -583,6 +592,7 @@ These employee records can be created via `POST /api/employees` (or imported thr
 | `POST` | `/api/face/verify` | Verify face (proxies to face-svc) |
 | `POST` | `/api/face/register` | Register face (proxies to face-svc) |
 | `GET` | `/api/face/employee/{id}/status` | Face registration status (embedding count, last registered) |
+| `GET` | `/api/shifts` | List all predefined shift schedules |
 
 ### Face Recognition Service (`:5001`)
 
@@ -597,25 +607,38 @@ These employee records can be created via `POST /api/employees` (or imported thr
 ## 12 · Data Model Overview
 
 ```
-┌──────────────┐        ┌───────────────────┐       ┌────────────────────┐
-│   employees  │        │  attendance_logs  │       │  face_embeddings   │
-├──────────────┤        ├───────────────────┤       ├────────────────────┤
-│ id (UUID PK) │◄─┐     │ id (UUID PK)      │       │ id (UUID PK)       │
-│ name         │  └────►│ employee_id (FK)  │  ┌───►│ employee_id (FK)   │
-│ employee_code│        │ timestamp         │  │    │ raw_image_path     │
-│ department   │        │ type (IN/OUT)     │  │    │ model_used         │
-│ email        │        │ image_path        │  │    │ created_at         │
-│ photo_url    │  ┌────►│ confidence_score  │  └────┤                    │
-│ status       │  │     │ verified          │       └────────────────────┘
-│ created_at   │  │     │ notes             │
-│ updated_at   │  │
-                  │     └───────────────────┘
-                  │
-           (same FK pattern)
+┌──────────────────────┐        ┌───────────────────┐       ┌────────────────────┐
+│     employees        │        │  attendance_logs  │       │  face_embeddings   │
+├──────────────────────┤        ├───────────────────┤       ├────────────────────┤
+│ id (UUID PK)         │◄─┐     │ id (UUID PK)      │       │ id (UUID PK)       │
+│ name                 │  └────►│ employee_id (FK)  │  ┌───►│ employee_id (FK)   │
+│ employee_code        │        │ timestamp         │  │    │ raw_image_path     │
+│ department           │        │ type (IN/OUT)     │  │    │ model_used         │
+│ email                │        │ image_path        │  │    │ created_at         │
+│ photo_url            │  ┌────►│ confidence_score  │  └────┤                    │
+│ status               │  │     │ verified          │       └────────────────────┘
+│ shift_schedule_id FK─┼──┼─┐   │ notes             │
+│ custom_shift_start   │  │ │   └───────────────────┘
+│ custom_shift_end     │  │ │
+│ created_at           │  │ │   ┌────────────────────┐
+│ updated_at           │  │ │   │  shift_schedules   │
+                          │ └──►├────────────────────┤
+                          │     │ id (UUID PK)        │
+                   (same FK)    │ name                │
+                                │ start_time (TIME)   │
+                                │ end_time   (TIME)   │
+                                │ created_at          │
+                                └────────────────────┘
 
 Embeddings on disk (face-recognition-service/data/embeddings/):
   {employee_id}.json → { "employee_id": "...", "embeddings": [[...], [...]] }
   Multiple photos per employee are accumulated — not overwritten.
+
+Predefined shifts seeded by V4 migration:
+  Morning Shift   06:00 – 14:00
+  Day Shift       08:00 – 17:00
+  Afternoon Shift 14:00 – 22:00
+  Night Shift     22:00 – 06:00  (overnight)
 ```
 
 ---
